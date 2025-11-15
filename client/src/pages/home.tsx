@@ -42,10 +42,14 @@ export default function Home() {
         ...data,
         dueDate: data.dueDate ? new Date(data.dueDate).toISOString() : null,
       };
-      await apiRequest("POST", "/api/tasks", payload);
+      const response = await apiRequest("POST", "/api/tasks", payload);
+      return response;
     },
-    onSuccess: () => {
+    onSuccess: (task: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      if (task?.id) {
+        queryClient.invalidateQueries({ queryKey: ["/api/tasks", task.id, "activity"] });
+      }
       toast({
         title: "Tarea creada",
         description: "La tarea se ha creado correctamente.",
@@ -74,6 +78,7 @@ export default function Home() {
   const updateTaskStatusMutation = useMutation({
     mutationFn: async ({ taskId, status }: { taskId: string; status: string }) => {
       await apiRequest("PATCH", `/api/tasks/${taskId}/status`, { status });
+      return { taskId, status };
     },
     onMutate: async ({ taskId, status }) => {
       await queryClient.cancelQueries({ queryKey: ["/api/tasks"] });
@@ -107,8 +112,9 @@ export default function Home() {
         variant: "destructive",
       });
     },
-    onSettled: () => {
+    onSuccess: ({ taskId }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", taskId, "activity"] });
     },
   });
 

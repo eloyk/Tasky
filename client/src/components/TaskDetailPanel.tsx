@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Calendar, Paperclip, MessageSquare, Trash2, Upload } from "lucide-react";
-import { Task, Comment, Attachment, insertCommentSchema } from "@shared/schema";
+import { Calendar, Paperclip, MessageSquare, Trash2, Upload, History } from "lucide-react";
+import { Task, Comment, Attachment, ActivityLog, insertCommentSchema } from "@shared/schema";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,6 +44,11 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
 
   const { data: attachments = [] } = useQuery<Attachment[]>({
     queryKey: ["/api/tasks", task?.id, "attachments"],
+    enabled: !!task,
+  });
+
+  const { data: activity = [] } = useQuery<ActivityLog[]>({
+    queryKey: ["/api/tasks", task?.id, "activity"],
     enabled: !!task,
   });
 
@@ -275,6 +280,56 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
                   >
                     {createCommentMutation.isPending ? "Agregando..." : "Agregar Comentario"}
                   </Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                  <History className="w-4 h-4" />
+                  Historial de Actividad
+                </h4>
+                <div className="space-y-3">
+                  {activity.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No hay actividad registrada</p>
+                  ) : (
+                    activity.map((log) => (
+                      <div key={log.id} className="flex gap-3 text-sm" data-testid={`activity-${log.id}`}>
+                        <div className="flex-shrink-0">
+                          <Avatar className="w-6 h-6">
+                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                              {log.userId.substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {format(new Date(log.createdAt!), "MMM dd, HH:mm")}
+                            </span>
+                          </div>
+                          <p className="text-sm">
+                            {log.actionType === "created" && (
+                              <span>Creó la tarea <span className="font-medium">"{log.newValue}"</span></span>
+                            )}
+                            {log.actionType === "status_change" && (
+                              <span>
+                                Cambió el estado de{" "}
+                                <span className="font-medium">
+                                  {log.oldValue === "pendiente" ? "Pendiente" : log.oldValue === "en_progreso" ? "En Progreso" : "Completada"}
+                                </span>
+                                {" "}a{" "}
+                                <span className="font-medium">
+                                  {log.newValue === "pendiente" ? "Pendiente" : log.newValue === "en_progreso" ? "En Progreso" : "Completada"}
+                                </span>
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>

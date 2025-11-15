@@ -3,6 +3,7 @@ import {
   tasks,
   comments,
   attachments,
+  activityLog,
   type User,
   type UpsertUser,
   type Task,
@@ -11,6 +12,8 @@ import {
   type InsertComment,
   type Attachment,
   type InsertAttachment,
+  type ActivityLog,
+  type InsertActivityLog,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -30,6 +33,9 @@ export interface IStorage {
 
   getTaskAttachments(taskId: string): Promise<Attachment[]>;
   createAttachment(attachment: InsertAttachment): Promise<Attachment>;
+
+  getTaskActivity(taskId: string): Promise<ActivityLog[]>;
+  createActivityLog(activity: InsertActivityLog): Promise<ActivityLog>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -116,6 +122,22 @@ export class DatabaseStorage implements IStorage {
       .values(attachmentData)
       .returning();
     return attachment;
+  }
+
+  async getTaskActivity(taskId: string): Promise<ActivityLog[]> {
+    return await db
+      .select()
+      .from(activityLog)
+      .where(eq(activityLog.taskId, taskId))
+      .orderBy(desc(activityLog.createdAt));
+  }
+
+  async createActivityLog(activityData: InsertActivityLog): Promise<ActivityLog> {
+    const [activity] = await db
+      .insert(activityLog)
+      .values(activityData)
+      .returning();
+    return activity;
   }
 }
 

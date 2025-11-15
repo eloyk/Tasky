@@ -55,6 +55,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdById: userId,
       });
       const task = await storage.createTask(validatedData);
+      
+      // Log task creation
+      await storage.createActivityLog({
+        taskId: task.id,
+        userId: userId,
+        actionType: "created",
+        fieldName: "task",
+        newValue: task.title,
+      });
+
       res.json(task);
     } catch (error) {
       console.error("Error creating task:", error);
@@ -66,15 +76,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { status } = req.body;
+      const userId = req.user.claims.sub;
       
       if (!status) {
         return res.status(400).json({ message: "Status is required" });
       }
 
+      // Get old task state before updating
+      const oldTask = await storage.getTask(id);
       const task = await storage.updateTaskStatus(id, status);
       
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
+      }
+
+      // Log status change
+      if (oldTask && oldTask.status !== status) {
+        await storage.createActivityLog({
+          taskId: id,
+          userId: userId,
+          actionType: "status_change",
+          fieldName: "status",
+          oldValue: oldTask.status,
+          newValue: status,
+        });
       }
 
       res.json(task);
@@ -133,6 +158,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching attachments:", error);
       res.status(500).json({ message: "Failed to fetch attachments" });
+    }
+  });
+
+  app.get("/api/tasks/:id/activity", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const activity = await storage.getTaskActivity(id);
+      res.json(activity);
+    } catch (error) {
+      console.error("Error fetching activity:", error);
+      res.status(500).json({ message: "Failed to fetch activity" });
     }
   });
 
