@@ -126,8 +126,13 @@ Preferred communication style: Simple, everyday language.
 - Added `activity_log` table to track task lifecycle events with user attribution
 - Implemented automatic activity logging on task creation and status changes
 - Backend routes (`POST /api/tasks`, `PATCH /api/tasks/:id/status`) now create activity log entries
-- New API endpoint `GET /api/tasks/:id/activity` returns chronologically ordered activity history
-- TaskDetailPanel displays activity history section with formatted Spanish messages
-- Activity entries show user avatar, timestamp, and action description
+- New API endpoint `GET /api/tasks/:id/activity` returns chronologically ordered activity history with user information via LEFT JOIN
+- TaskDetailPanel displays activity history section with user full name, avatar, timestamp, and formatted Spanish messages
+- Activity entries show:
+  - User's full name (firstName + lastName) or email as fallback
+  - User profile image or initials in avatar
+  - Timestamp in format "MMM dd, HH:mm"
+  - Action description in Spanish
 - Supported actions: task creation ("Creó la tarea") and status transitions ("Cambió el estado de X a Y")
 - Cache invalidation ensures real-time activity updates after mutations
+- User information automatically populated via upsertUser during authentication flow
