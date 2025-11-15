@@ -2,7 +2,7 @@
 
 ## Overview
 
-Tasky RD is a collaborative task management web application built with a modern full-stack architecture. The application provides an intuitive Kanban board interface for creating, organizing, and managing tasks through three workflow states: Pendiente (Pending), En Progreso (In Progress), and Completada (Completed). Users can collaborate on tasks with features including comments, file attachments, priority levels, and due dates.
+Tasky RD is a collaborative task management web application built with a modern full-stack architecture. The application provides an intuitive Kanban board interface for creating, organizing, and managing tasks through three workflow states: Pendiente (Pending), En Progreso (In Progress), and Completada (Completed). Users can collaborate on tasks with features including comments, file attachments, priority levels, due dates, and activity history tracking.
 
 The application is designed with a desktop-first approach following a Linear + Notion hybrid design system, emphasizing information clarity and efficient task completion workflows.
 
@@ -84,6 +84,7 @@ Preferred communication style: Simple, everyday language.
 - `tasks` table: Core task data with status, priority, title, description, assignee, due dates, creator reference
 - `comments` table: Task comments with user reference and timestamps
 - `attachments` table: File metadata linked to tasks (name, URL, size, MIME type)
+- `activity_log` table: Audit trail for task actions (created, status_change) with user attribution, timestamps, and old/new values
 - `sessions` table: Express session storage with expiration indexing
 
 **Type Safety:**
@@ -118,3 +119,15 @@ Preferred communication style: Simple, everyday language.
 - Centralized apiRequest utility for consistent error handling
 - 401 error detection for authentication redirects
 - Query invalidation on mutations for real-time UI updates
+
+### Recent Changes (November 15, 2025)
+
+**Activity History System:**
+- Added `activity_log` table to track task lifecycle events with user attribution
+- Implemented automatic activity logging on task creation and status changes
+- Backend routes (`POST /api/tasks`, `PATCH /api/tasks/:id/status`) now create activity log entries
+- New API endpoint `GET /api/tasks/:id/activity` returns chronologically ordered activity history
+- TaskDetailPanel displays activity history section with formatted Spanish messages
+- Activity entries show user avatar, timestamp, and action description
+- Supported actions: task creation ("Creó la tarea") and status transitions ("Cambió el estado de X a Y")
+- Cache invalidation ensures real-time activity updates after mutations
