@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Calendar, Paperclip, MessageSquare, Trash2, X, Upload } from "lucide-react";
+import { Calendar, Paperclip, MessageSquare, Trash2, Upload } from "lucide-react";
 import { Task, Comment, Attachment, insertCommentSchema } from "@shared/schema";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -173,17 +173,7 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
       <Sheet open={open} onOpenChange={onClose}>
         <SheetContent className="w-full sm:max-w-[500px] p-0 flex flex-col">
           <SheetHeader className="p-6 pb-4">
-            <div className="flex items-start justify-between gap-4">
-              <SheetTitle className="text-2xl font-semibold pr-8">{task.title}</SheetTitle>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onClose}
-                data-testid="button-close-panel"
-              >
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
+            <SheetTitle className="text-2xl font-semibold">{task.title}</SheetTitle>
           </SheetHeader>
 
           <ScrollArea className="flex-1 px-6">
