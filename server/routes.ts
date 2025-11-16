@@ -7,7 +7,9 @@ import {
   ObjectNotFoundError,
 } from "./objectStorage";
 import { ObjectPermission, getObjectAclPolicy, setObjectAclPolicy } from "./objectAcl";
-import { insertTaskSchema, insertCommentSchema, insertAttachmentSchema } from "@shared/schema";
+import { insertTaskSchema, insertCommentSchema, insertAttachmentSchema, users } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
