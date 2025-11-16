@@ -10,10 +10,23 @@ import { storage } from "./storage";
 
 const getOidcConfig = memoize(
   async () => {
-    return await client.discovery(
-      new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!
+    const keycloakUrl = process.env.KEYCLOAK_URL;
+    const realm = process.env.KEYCLOAK_REALM;
+    const clientId = process.env.KEYCLOAK_CLIENT_ID;
+    const clientSecret = process.env.KEYCLOAK_CLIENT_SECRET;
+    
+    if (!keycloakUrl || !realm || !clientId || !clientSecret) {
+      throw new Error("KEYCLOAK_URL, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID, and KEYCLOAK_CLIENT_SECRET must be set");
+    }
+
+    const issuerUrl = `${keycloakUrl}/realms/${realm}`;
+    const issuer = await client.discovery(
+      new URL(issuerUrl),
+      clientId,
+      clientSecret
     );
+    
+    return issuer;
   },
   { maxAge: 3600 * 1000 }
 );
@@ -54,9 +67,9 @@ async function upsertUser(claims: any) {
   await storage.upsertUser({
     id: claims["sub"],
     email: claims["email"],
-    firstName: claims["first_name"],
-    lastName: claims["last_name"],
-    profileImageUrl: claims["profile_image_url"],
+    firstName: claims["given_name"] || claims["name"]?.split(" ")[0] || "",
+    lastName: claims["family_name"] || claims["name"]?.split(" ").slice(1).join(" ") || "",
+    profileImageUrl: claims["picture"],
   });
 }
 
@@ -81,13 +94,13 @@ export async function setupAuth(app: Express) {
   const registeredStrategies = new Set<string>();
 
   const ensureStrategy = (domain: string) => {
-    const strategyName = `replitauth:${domain}`;
+    const strategyName = `keycloak:${domain}`;
     if (!registeredStrategies.has(strategyName)) {
       const strategy = new Strategy(
         {
           name: strategyName,
           config,
-          scope: "openid email profile offline_access",
+          scope: "openid email profile",
           callbackURL: `https://${domain}/api/callback`,
         },
         verify,
@@ -102,15 +115,14 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/login", (req, res, next) => {
     ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      prompt: "login consent",
-      scope: ["openid", "email", "profile", "offline_access"],
+    passport.authenticate(`keycloak:${req.hostname}`, {
+      scope: ["openid", "email", "profile"],
     })(req, res, next);
   });
 
   app.get("/api/callback", (req, res, next) => {
     ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
+    passport.authenticate(`keycloak:${req.hostname}`, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
     })(req, res, next);
@@ -120,7 +132,7 @@ export async function setupAuth(app: Express) {
     req.logout(() => {
       res.redirect(
         client.buildEndSessionUrl(config, {
-          client_id: process.env.REPL_ID!,
+          client_id: process.env.KEYCLOAK_CLIENT_ID!,
           post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
         }).href
       );
