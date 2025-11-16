@@ -122,6 +122,9 @@ export async function setupAuth(app: Express) {
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
+    const callbackURL = buildCallbackURL(req);
+    console.log(`[Keycloak Auth] Login initiated. Callback URL will be: ${callbackURL}`);
+    console.log(`[Keycloak Auth] Request details - Protocol: ${req.protocol}, Host: ${req.get('host')}, Hostname: ${req.hostname}`);
     passport.authenticate(STRATEGY_NAME)(req, res, next);
   });
 
