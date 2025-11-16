@@ -100,36 +100,50 @@ export async function setupAuth(app: Express) {
 
   const STRATEGY_NAME = "keycloak";
 
+  const registeredStrategies = new Set<string>();
+
   const buildCallbackURL = (req: any) => {
     const protocol = req.protocol;
     const host = req.get('host');
     return `${protocol}://${host}/api/callback`;
   };
 
-  passport.use(
-    STRATEGY_NAME,
-    new Strategy(
-      {
-        config,
-        scope: "openid email profile",
-        passReqToCallback: false,
-      },
-      verify,
-    )
-  );
+  const ensureStrategy = (req: any) => {
+    const callbackURL = buildCallbackURL(req);
+    const strategyName = `${STRATEGY_NAME}:${req.get('host')}`;
+    
+    if (!registeredStrategies.has(strategyName)) {
+      console.log(`[Keycloak Auth] Registering new strategy for host: ${req.get('host')}, callback URL: ${callbackURL}`);
+      const strategy = new Strategy(
+        {
+          name: strategyName,
+          config,
+          scope: "openid email profile",
+          callbackURL,
+        },
+        verify,
+      );
+      passport.use(strategy);
+      registeredStrategies.add(strategyName);
+    }
+    return strategyName;
+  };
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
+    const strategyName = ensureStrategy(req);
     const callbackURL = buildCallbackURL(req);
-    console.log(`[Keycloak Auth] Login initiated. Callback URL will be: ${callbackURL}`);
+    console.log(`[Keycloak Auth] Login initiated. Strategy: ${strategyName}, Callback URL: ${callbackURL}`);
     console.log(`[Keycloak Auth] Request details - Protocol: ${req.protocol}, Host: ${req.get('host')}, Hostname: ${req.hostname}`);
-    passport.authenticate(STRATEGY_NAME)(req, res, next);
+    passport.authenticate(strategyName)(req, res, next);
   });
 
   app.get("/api/callback", (req, res, next) => {
-    passport.authenticate(STRATEGY_NAME, {
+    const strategyName = ensureStrategy(req);
+    console.log(`[Keycloak Auth] Callback received. Strategy: ${strategyName}`);
+    passport.authenticate(strategyName, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
     })(req, res, next);
