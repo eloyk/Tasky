@@ -62,17 +62,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/tasks", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
       const validatedData = insertTaskSchema.parse({
         ...req.body,
-        createdById: userId,
+        createdById: user.id,
       });
       const task = await storage.createTask(validatedData);
       
       // Log task creation
       await storage.createActivityLog({
         taskId: task.id,
-        userId: userId,
+        userId: user.id,
         actionType: "created",
         fieldName: "task",
         newValue: task.title,
@@ -89,7 +95,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { status } = req.body;
-      const userId = req.user.claims.sub;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
       
       if (!status) {
         return res.status(400).json({ message: "Status is required" });
@@ -107,7 +118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (oldTask && oldTask.status !== status) {
         await storage.createActivityLog({
           taskId: id,
-          userId: userId,
+          userId: user.id,
           actionType: "status_change",
           fieldName: "status",
           oldValue: oldTask.status,
@@ -147,11 +158,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/tasks/:id/comments", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
       
       const validatedData = insertCommentSchema.parse({
         taskId: id,
-        userId: userId,
+        userId: user.id,
         content: req.body.content,
       });
 
@@ -188,7 +204,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/tasks/:id/attachments", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
       
       const objectStorageService = new ObjectStorageService();
       const objectPath = objectStorageService.normalizeObjectEntityPath(req.body.objectPath);
@@ -203,14 +224,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!existingAcl) {
           // Set ACL for newly uploaded file - owner is the current user
           await setObjectAclPolicy(objectFile, {
-            owner: userId,
+            owner: user.id,
             visibility: "private",
           });
         } else {
           // Verify the user has write permission to this object
           const canAccess = await objectStorageService.canAccessObjectEntity({
             objectFile,
-            userId: userId,
+            userId: user.id,
             requestedPermission: ObjectPermission.WRITE,
           });
           
@@ -227,7 +248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedData = insertAttachmentSchema.parse({
         taskId: id,
-        userId: userId,
+        userId: user.id,
         fileName: req.body.fileName,
         objectPath: objectPath,
         fileSize: req.body.fileSize,
