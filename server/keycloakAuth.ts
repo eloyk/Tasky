@@ -64,13 +64,27 @@ function updateUserSession(
 }
 
 async function upsertUser(claims: any) {
-  await storage.upsertUser({
-    id: claims["sub"],
-    email: claims["email"],
-    firstName: claims["given_name"] || claims["name"]?.split(" ")[0] || "",
-    lastName: claims["family_name"] || claims["name"]?.split(" ").slice(1).join(" ") || "",
-    profileImageUrl: claims["picture"],
-  });
+  try {
+    console.log("[upsertUser] Upserting user with claims:", {
+      sub: claims["sub"],
+      email: claims["email"],
+      given_name: claims["given_name"],
+      family_name: claims["family_name"],
+    });
+    
+    const result = await storage.upsertUser({
+      id: claims["sub"],
+      email: claims["email"],
+      firstName: claims["given_name"] || claims["name"]?.split(" ")[0] || "",
+      lastName: claims["family_name"] || claims["name"]?.split(" ").slice(1).join(" ") || "",
+      profileImageUrl: claims["picture"],
+    });
+    
+    console.log("[upsertUser] User upserted successfully:", result.email);
+  } catch (error) {
+    console.error("[upsertUser] Failed to upsert user:", error);
+    throw error;
+  }
 }
 
 export async function setupAuth(app: Express) {
