@@ -8,7 +8,7 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 
-const getOidcConfig = memoize(
+const getKeycloakConfig = memoize(
   async () => {
     const keycloakUrl = process.env.KEYCLOAK_URL;
     const realm = process.env.KEYCLOAK_REALM;
@@ -20,13 +20,13 @@ const getOidcConfig = memoize(
     }
 
     const issuerUrl = `${keycloakUrl}/realms/${realm}`;
-    const issuer = await client.discovery(
+    const config = await client.discovery(
       new URL(issuerUrl),
       clientId,
       clientSecret
     );
     
-    return issuer;
+    return config;
   },
   { maxAge: 3600 * 1000 }
 );
@@ -47,7 +47,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
       maxAge: sessionTtl,
     },
   });
@@ -79,7 +79,7 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  const config = await getOidcConfig();
+  const config = await getKeycloakConfig();
 
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
@@ -93,15 +93,23 @@ export async function setupAuth(app: Express) {
 
   const registeredStrategies = new Set<string>();
 
-  const ensureStrategy = (domain: string) => {
-    const strategyName = `keycloak:${domain}`;
+  const buildCallbackURL = (req: any) => {
+    const protocol = req.protocol;
+    const host = req.get('host');
+    return `${protocol}://${host}/api/callback`;
+  };
+
+  const ensureStrategy = (req: any) => {
+    const callbackURL = buildCallbackURL(req);
+    const strategyName = `keycloak:${req.hostname}`;
+    
     if (!registeredStrategies.has(strategyName)) {
       const strategy = new Strategy(
         {
           name: strategyName,
           config,
           scope: "openid email profile",
-          callbackURL: `https://${domain}/api/callback`,
+          callbackURL,
         },
         verify,
       );
@@ -114,26 +122,30 @@ export async function setupAuth(app: Express) {
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
-    ensureStrategy(req.hostname);
+    ensureStrategy(req);
     passport.authenticate(`keycloak:${req.hostname}`, {
       scope: ["openid", "email", "profile"],
     })(req, res, next);
   });
 
   app.get("/api/callback", (req, res, next) => {
-    ensureStrategy(req.hostname);
+    ensureStrategy(req);
     passport.authenticate(`keycloak:${req.hostname}`, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
     })(req, res, next);
   });
 
-  app.get("/api/logout", (req, res) => {
+  app.get("/api/logout", async (req, res) => {
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const config = await getKeycloakConfig();
+    
     req.logout(() => {
       res.redirect(
         client.buildEndSessionUrl(config, {
           client_id: process.env.KEYCLOAK_CLIENT_ID!,
-          post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
+          post_logout_redirect_uri: `${protocol}://${host}`,
         }).href
       );
     });
@@ -159,7 +171,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   }
 
   try {
-    const config = await getOidcConfig();
+    const config = await getKeycloakConfig();
     const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
     updateUserSession(user, tokenResponse);
     return next();

@@ -52,11 +52,13 @@ Preferred communication style: Simple, everyday language.
 - Custom middleware for request logging and JSON response capture
 
 **Authentication System:**
-- Replit Auth integration via OpenID Connect (OIDC)
-- Passport.js strategy for authentication flow
+- Keycloak integration via OpenID Connect (OIDC)
+- Passport.js strategy for authentication flow using openid-client v6
 - Session management using express-session with PostgreSQL storage
 - Session persistence with 7-day TTL
 - Protected routes via isAuthenticated middleware
+- Dynamic callback URL generation based on request protocol and host
+- Secure cookie configuration (secure flag only in production for development compatibility)
 
 **API Design:**
 - RESTful endpoints under `/api` namespace
@@ -96,7 +98,7 @@ Preferred communication style: Simple, everyday language.
 ### External Dependencies
 
 **Third-Party Services:**
-- Replit Auth (OIDC): User authentication and identity management
+- Keycloak: User authentication and identity management via OIDC
 - Google Cloud Storage: Object/file storage with ACL management
 - Neon Database: Serverless PostgreSQL hosting
 - Replit Sidecar: Service for GCS credential provisioning
@@ -120,7 +122,19 @@ Preferred communication style: Simple, everyday language.
 - 401 error detection for authentication redirects
 - Query invalidation on mutations for real-time UI updates
 
-### Recent Changes (November 15, 2025)
+### Recent Changes
+
+**November 16, 2025 - Keycloak Authentication Migration:**
+- Removed Replit Auth completely and migrated to Keycloak authentication
+- Updated server/keycloakAuth.ts with openid-client v6 functional API
+- Configured Keycloak discovery using environment variables (KEYCLOAK_URL, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID, KEYCLOAK_CLIENT_SECRET)
+- Implemented dynamic callback URL generation for dev/production compatibility
+- Updated session cookie security (secure flag conditional on NODE_ENV)
+- User claim mapping updated: given_name/family_name from Keycloak (vs first_name/last_name from Replit)
+- Frontend unchanged - authentication routes remain identical (/api/login, /api/callback, /api/logout)
+- Deleted server/replitAuth.ts file
+
+**November 15, 2025 - Activity History System:
 
 **Activity History System:**
 - Added `activity_log` table to track task lifecycle events with user attribution
