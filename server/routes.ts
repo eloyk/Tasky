@@ -14,17 +14,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      console.log("[/api/auth/user] req.user:", JSON.stringify(req.user, null, 2));
-      const userId = req.user?.claims?.sub;
-      if (!userId) {
-        console.error("[/api/auth/user] No userId found in req.user");
-        return res.status(401).json({ message: "No user ID in session" });
+      const userEmail = req.user?.claims?.email;
+      if (!userEmail) {
+        console.error("[/api/auth/user] No email found in req.user");
+        return res.status(401).json({ message: "No user email in session" });
       }
-      const user = await storage.getUser(userId);
+      
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       if (!user) {
-        console.error(`[/api/auth/user] User not found in database: ${userId}`);
+        console.error(`[/api/auth/user] User not found in database: ${userEmail}`);
         return res.status(404).json({ message: "User not found" });
       }
+      
       console.log("[/api/auth/user] Returning user:", user.email);
       res.json(user);
     } catch (error) {
