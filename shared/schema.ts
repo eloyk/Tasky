@@ -68,15 +68,17 @@ export const tasks = pgTable("tasks", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertTaskSchema = createInsertSchema(tasks)
-  .omit({
-    id: true,
-    createdAt: true,
-    updatedAt: true,
-  })
-  .extend({
-    dueDate: z.string().optional().nullable().transform((val) => val ? new Date(val) : null),
-  });
+export const insertTaskSchema = createInsertSchema(tasks, {
+  dueDate: z.union([z.string(), z.date()]).optional().nullable().transform((val) => {
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    return new Date(val);
+  }),
+}).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type Task = typeof tasks.$inferSelect;
