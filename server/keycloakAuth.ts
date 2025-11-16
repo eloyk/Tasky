@@ -74,6 +74,13 @@ async function upsertUser(claims: any) {
 }
 
 export async function setupAuth(app: Express) {
+  if (!process.env.SESSION_SECRET) {
+    throw new Error("SESSION_SECRET must be set");
+  }
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL must be set");
+  }
+  
   app.set("trust proxy", 1);
   app.use(getSession());
   app.use(passport.initialize());
@@ -91,7 +98,7 @@ export async function setupAuth(app: Express) {
     verified(null, user);
   };
 
-  const registeredStrategies = new Set<string>();
+  const STRATEGY_NAME = "keycloak";
 
   const buildCallbackURL = (req: any) => {
     const protocol = req.protocol;
@@ -99,38 +106,27 @@ export async function setupAuth(app: Express) {
     return `${protocol}://${host}/api/callback`;
   };
 
-  const ensureStrategy = (req: any) => {
-    const callbackURL = buildCallbackURL(req);
-    const strategyName = `keycloak:${req.hostname}`;
-    
-    if (!registeredStrategies.has(strategyName)) {
-      const strategy = new Strategy(
-        {
-          name: strategyName,
-          config,
-          scope: "openid email profile",
-          callbackURL,
-        },
-        verify,
-      );
-      passport.use(strategy);
-      registeredStrategies.add(strategyName);
-    }
-  };
+  passport.use(
+    STRATEGY_NAME,
+    new Strategy(
+      {
+        config,
+        scope: "openid email profile",
+        passReqToCallback: false,
+      },
+      verify,
+    )
+  );
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
-    ensureStrategy(req);
-    passport.authenticate(`keycloak:${req.hostname}`, {
-      scope: ["openid", "email", "profile"],
-    })(req, res, next);
+    passport.authenticate(STRATEGY_NAME)(req, res, next);
   });
 
   app.get("/api/callback", (req, res, next) => {
-    ensureStrategy(req);
-    passport.authenticate(`keycloak:${req.hostname}`, {
+    passport.authenticate(STRATEGY_NAME, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
     })(req, res, next);
