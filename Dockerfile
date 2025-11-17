@@ -6,13 +6,13 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install all dependencies (including dev for build)
 RUN npm ci
 
 # Copy source code
 COPY . .
 
-# Build the application
+# Build the application (frontend + backend)
 RUN npm run build
 
 # Production stage
@@ -26,14 +26,20 @@ COPY package*.json ./
 # Install production dependencies only
 RUN npm ci --only=production
 
-# Copy built application from builder
-COPY --from=builder /app/dist ./dist
+# Copy built frontend from builder
+COPY --from=builder /app/dist/public ./dist/public
 
-# Copy necessary files
-COPY server ./server
-COPY shared ./shared
-# COPY migrations ./migrations
-COPY drizzle.config.ts ./
+# Copy built backend from builder
+COPY --from=builder /app/dist/index.js ./dist/index.js
+
+# Copy server source (needed for static.ts and other runtime files)
+COPY --from=builder /app/server ./server
+
+# Copy shared code
+COPY --from=builder /app/shared ./shared
+
+# Copy drizzle config
+COPY --from=builder /app/drizzle.config.ts ./
 
 # Expose port
 EXPOSE 5000
