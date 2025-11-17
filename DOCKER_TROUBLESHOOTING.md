@@ -15,8 +15,9 @@ wss://postgresql.tools.svc.cluster.local/v2
 **Solución Implementada** ✅:
 - Actualizado `server/db.ts` para **detectar automáticamente** el tipo de base de datos:
   - Si la URL contiene `neon.tech` → Usa driver Neon serverless (WebSocket)
-  - Si no → Usa driver PostgreSQL estándar (`pg`)
+  - **Cualquier otra conexión** (Docker, Replit postgres, local) → Usa driver PostgreSQL estándar (`pg`)
 - Corregida importación ESM/CommonJS del módulo `pg`
+- **Importante**: `postgresql.tools.svc.cluster.local` (Replit) usa driver estándar, NO Neon
 
 **Qué hacer ahora**:
 ```bash

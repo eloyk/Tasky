@@ -13,9 +13,9 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-// Detect if we're using Neon (has neon.tech in URL) or regular PostgreSQL
-const isNeon = process.env.DATABASE_URL.includes('neon.tech') || 
-               process.env.DATABASE_URL.includes('postgresql.tools.svc.cluster.local');
+// Detect if we're using Neon (only if the URL contains 'neon.tech')
+// Any other PostgreSQL connection (including Replit's postgres) uses standard driver
+const isNeon = process.env.DATABASE_URL.includes('neon.tech');
 
 let pool: NeonPool | InstanceType<typeof NodePool>;
 let db: ReturnType<typeof drizzleNeon> | ReturnType<typeof drizzleNode>;
