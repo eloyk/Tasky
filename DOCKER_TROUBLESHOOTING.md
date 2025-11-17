@@ -16,6 +16,7 @@ wss://postgresql.tools.svc.cluster.local/v2
 - Actualizado `server/db.ts` para **detectar automáticamente** el tipo de base de datos:
   - Si la URL contiene `neon.tech` → Usa driver Neon serverless (WebSocket)
   - Si no → Usa driver PostgreSQL estándar (`pg`)
+- Corregida importación ESM/CommonJS del módulo `pg`
 
 **Qué hacer ahora**:
 ```bash
@@ -29,6 +30,21 @@ docker-compose logs -f app
 ```
 
 Deberías ver: `[Database] Using standard PostgreSQL driver`
+
+---
+
+### 1b. Error: "Named export 'Pool' not found" (pg module)
+
+**Síntoma**:
+```
+SyntaxError: Named export 'Pool' not found. The requested module 'pg' is a CommonJS module
+```
+
+**Causa**: El módulo `pg` es CommonJS y no soporta named exports en ESM.
+
+**Solución Implementada** ✅:
+- Cambiada importación de `pg` a usar default import + destructuring
+- Compatible con ESM module system de Node.js
 
 ---
 
