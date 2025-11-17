@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "module": "nodenext",
+    "module": "esnext",
     "moduleResolution": "bundler",
     "target": "es2022",
     "outDir": "./dist",
@@ -10,8 +10,7 @@
     "resolveJsonModule": true,
     "strict": true,
     "lib": ["es2022"],
-    "types": ["node"],
-    "allowImportingTsExtensions": false
+    "types": ["node"]
   },
   "include": [
     "server/**/*",
@@ -21,7 +20,6 @@
   "exclude": [
     "node_modules",
     "dist",
-    "client",
-    "server/vite.ts"
+    "client"
   ]
 }
