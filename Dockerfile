@@ -12,34 +12,33 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the application (frontend + backend)
-RUN npm run build
+# Build frontend (vite build)
+RUN npx vite build
 
 # Production stage
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files and tsconfig (needed for path aliases)
 COPY package*.json ./
+COPY tsconfig.json ./
 
-# Install production dependencies only
-RUN npm ci --only=production
+# Install all dependencies (tsx needs to be available for runtime)
+# Using full install instead of --only=production to get tsx and types
+RUN npm ci
 
 # Copy built frontend from builder
 COPY --from=builder /app/dist/public ./dist/public
 
-# Copy built backend from builder
-COPY --from=builder /app/dist/index.js ./dist/index.js
-
-# Copy server source (needed for static.ts and other runtime files)
-COPY --from=builder /app/server ./server
+# Copy server source (TypeScript files)
+COPY server ./server
 
 # Copy shared code
-COPY --from=builder /app/shared ./shared
+COPY shared ./shared
 
 # Copy drizzle config
-COPY --from=builder /app/drizzle.config.ts ./
+COPY drizzle.config.ts ./
 
 # Expose port
 EXPOSE 5000
@@ -47,5 +46,5 @@ EXPOSE 5000
 # Set environment
 ENV NODE_ENV=production
 
-# Start the application
-CMD ["node", "dist/index.js"]
+# Start the application with tsx
+CMD ["npx", "tsx", "server/index.ts"]

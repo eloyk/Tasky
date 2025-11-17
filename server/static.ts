@@ -1,9 +1,13 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
 export function serveStatic(app: Express) {
-  const distPath = path.resolve(import.meta.dirname, "public");
+  // Resolve dist/public relative to the project root
+  // In production with tsx, this file is at server/static.ts
+  // So we go up one level to reach the project root, then into dist/public
+  const distPath = fileURLToPath(new URL("../dist/public", import.meta.url));
 
   if (!fs.existsSync(distPath)) {
     throw new Error(

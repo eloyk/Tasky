@@ -151,6 +151,39 @@ server {
 }
 ```
 
+## Arquitectura del Contenedor
+
+### Build Multi-Etapa
+
+1. **Etapa de Build**: Compila el frontend (React + Vite) → `dist/public`
+2. **Etapa de Producción**: 
+   - Instala todas las dependencias (incluye `tsx` y tipos TypeScript necesarios)
+   - Copia `tsconfig.json` (requerido para path aliases como `@shared/*`)
+   - Copia archivos fuente del servidor (TypeScript)
+   - Ejecuta el servidor con `tsx` (transpilación on-the-fly)
+
+### Consideraciones de Producción
+
+**Enfoque Actual**: El backend se ejecuta con `tsx` que transpila TypeScript en tiempo de ejecución.
+
+**Ventajas**:
+- Configuración simple y robusta
+- Evita problemas con bundling de importaciones dinámicas de Vite
+- Funciona de manera confiable con path aliases y módulos TypeScript
+- Mantiene consistencia entre desarrollo y producción
+
+**Limitaciones**:
+- Imagen más grande (~300-500MB adicionales) debido a dependencias de desarrollo
+- Overhead de transpilación en tiempo de ejecución (mínimo para aplicaciones pequeñas/medianas)
+- Incluye código fuente TypeScript en lugar de JavaScript compilado
+
+**Mejora Futura**: Para optimizar tamaño de imagen y rendimiento en producción:
+1. Compilar backend a JavaScript con tsc o esbuild
+2. Usar solo dependencias de producción
+3. Considerar un contenedor multi-stage más optimizado
+
+**Nota**: El enfoque actual prioriza funcionalidad y simplicidad sobre tamaño de imagen. Para la mayoría de aplicaciones colaborativas, el overhead es aceptable.
+
 ## Comandos Útiles
 
 ```bash
