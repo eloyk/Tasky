@@ -1,0 +1,25 @@
+parameters:
+- name: pathVersionFile
+  displayName: Path Version File
+  type: string
+- name: projectType
+  displayName: Project Version
+  type: string
+  default: "dotnet"
+
+stages:
+- stage: Version
+  displayName: Version Stage
+  jobs:
+  - job: Version
+    steps:
+    - checkout: self
+      persistCredentials: true
+    - bash: |
+        git fetch --all
+        git checkout main
+        git config --global user.email "stifler9.0@hotmail.com"
+        git config --global user.name "Azure DevOps"
+        pip3 install -r .azure-pipelines/requirements.txt
+        python3 .azure-pipelines/increment_version.py ${{ parameters.pathVersionFile }} "dev" ${{ parameters.projectType }}
+      displayName: "version"

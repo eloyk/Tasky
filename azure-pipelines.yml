@@ -1,0 +1,20 @@
+trigger:
+  branches:
+    include:
+    - main
+
+resources:
+- repo: self
+
+variables:
+- template: .azure-pipelines/vars-template.yaml
+
+stages:
+- template: .azure-pipelines/ci-version.yaml
+  parameters:
+    pathVersionFile: "package.json"
+    projectType: "npm"
+- template: .azure-pipelines/ci-build.yaml
+  parameters:
+    repository: "eloyk/tasky"
+    Dockerfile: "Dockerfile"

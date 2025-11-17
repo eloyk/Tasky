@@ -1,0 +1,13 @@
+# parameters:
+# - name: ci-pipeline-id
+#   displayName: CI Pipeline ID
+#   type: string
+#   default: '$(Build.BuildId)'
+
+variables:
+- name: enableUnitTestCoverage
+  value: "true"
+- name: enableCredscan
+  value: "true"
+- name: CI_PIPELINE_ID
+  value: $(Build.BuildId)

@@ -1,0 +1,31 @@
+parameters:
+  - name: containerRegistry
+    displayName: Project Name
+    type: string
+    default: "PCW Docker Hub"
+  - name: repository
+    displayName: Project Version
+    type: string
+  - name: Dockerfile
+    displayName: Source Directory
+    type: string
+
+stages:
+  - stage: Build
+    displayName: Build image
+    dependsOn: Version
+    jobs:
+      - job: Build
+        displayName: Build
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: Docker@2
+            displayName: "docker build"
+            inputs:
+              containerRegistry: ${{ parameters.containerRegistry }}
+              repository: ${{ parameters.repository }}
+              command: 'buildAndPush'
+              Dockerfile: ${{ parameters.Dockerfile }}
+              tags: '$(Build.BuildNumber)'
+              buildContext: "."

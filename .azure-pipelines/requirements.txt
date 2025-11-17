@@ -1,0 +1,5 @@
+git-changelog==1.0.1
+GitPython==3.1.31
+lxml==5.2.2
+semver==2.13.0
+jproperties==2.1.1
