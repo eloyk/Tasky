@@ -32,7 +32,7 @@ COPY --from=builder /app/dist ./dist
 # Copy necessary files
 COPY server ./server
 COPY shared ./shared
-COPY migrations ./migrations
+# COPY migrations ./migrations
 COPY drizzle.config.ts ./
 
 # Expose port
