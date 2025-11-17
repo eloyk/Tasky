@@ -15,12 +15,12 @@
   "include": [
     "server/**/*",
     "shared/**/*",
-    "drizzle.config.ts"
+    "drizzle.config.ts",
+    "vite.config.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "client",
-    "server/vite.ts"
+    "client"
   ]
 }
