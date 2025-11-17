@@ -155,34 +155,33 @@ server {
 
 ### Build Multi-Etapa
 
-1. **Etapa de Build**: Compila el frontend (React + Vite) → `dist/public`
+1. **Etapa de Build**: 
+   - Instala todas las dependencias (incluye devDependencies)
+   - Compila el frontend con Vite → `dist/public`
+   - Compila el backend con TypeScript Compiler (tsc) → `dist/server`
+   
 2. **Etapa de Producción**: 
-   - Instala todas las dependencias (incluye `tsx` y tipos TypeScript necesarios)
-   - Copia `tsconfig.json` (requerido para path aliases como `@shared/*`)
-   - Copia archivos fuente del servidor (TypeScript)
-   - Ejecuta el servidor con `tsx` (transpilación on-the-fly)
+   - Instala solo dependencias de producción (sin devDependencies)
+   - Copia archivos JavaScript compilados desde la etapa de build
+   - Ejecuta el servidor con `node dist/server/index.js`
 
-### Consideraciones de Producción
+### Estrategia de Compilación
 
-**Enfoque Actual**: El backend se ejecuta con `tsx` que transpila TypeScript en tiempo de ejecución.
+**Frontend**: Vite bundlea y optimiza el código React → `dist/public`
+
+**Backend**: TypeScript Compiler transpila sin bundlear → `dist/server`
+- No usa bundling (mantiene estructura de módulos)
+- Preserva importaciones dinámicas de Vite
+- Path aliases resueltos por TypeScript
+- Importaciones ESM funcionan correctamente
 
 **Ventajas**:
-- Configuración simple y robusta
-- Evita problemas con bundling de importaciones dinámicas de Vite
-- Funciona de manera confiable con path aliases y módulos TypeScript
-- Mantiene consistencia entre desarrollo y producción
+- Imagen de producción optimizada (solo dependencias runtime)
+- Sin overhead de transpilación en tiempo de ejecución
+- Código JavaScript compilado y listo para ejecutar
+- Build determinista y reproducible
 
-**Limitaciones**:
-- Imagen más grande (~300-500MB adicionales) debido a dependencias de desarrollo
-- Overhead de transpilación en tiempo de ejecución (mínimo para aplicaciones pequeñas/medianas)
-- Incluye código fuente TypeScript en lugar de JavaScript compilado
-
-**Mejora Futura**: Para optimizar tamaño de imagen y rendimiento en producción:
-1. Compilar backend a JavaScript con tsc o esbuild
-2. Usar solo dependencias de producción
-3. Considerar un contenedor multi-stage más optimizado
-
-**Nota**: El enfoque actual prioriza funcionalidad y simplicidad sobre tamaño de imagen. Para la mayoría de aplicaciones colaborativas, el overhead es aceptable.
+**Tamaño de imagen**: ~200-300MB (solo producción, sin devDependencies)
 
 ## Comandos Útiles
 
