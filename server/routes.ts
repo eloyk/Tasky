@@ -1,14 +1,14 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./keycloakAuth";
+import { storage } from "./storage.js";
+import { setupAuth, isAuthenticated } from "./keycloakAuth.js";
 import {
   ObjectStorageService,
   ObjectNotFoundError,
-} from "./objectStorage";
-import { ObjectPermission, getObjectAclPolicy, setObjectAclPolicy } from "./objectAcl";
-import { insertTaskSchema, insertCommentSchema, insertAttachmentSchema, users } from "@shared/schema";
-import { db } from "./db";
+} from "./objectStorage.js";
+import { ObjectPermission, getObjectAclPolicy, setObjectAclPolicy } from "./objectAcl.js";
+import { insertTaskSchema, insertCommentSchema, insertAttachmentSchema, users } from "../shared/schema.js";
+import { db } from "./db.js";
 import { eq } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {

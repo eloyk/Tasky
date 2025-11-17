@@ -1,14 +1,16 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "esnext",
-    "moduleResolution": "bundler",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "target": "es2022",
     "outDir": "./dist",
-    "rootDir": ".",
+    "noEmit": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "strict": true,
+    "lib": ["es2022"],
+    "types": ["node"]
   },
   "include": [
     "server/**/*",
