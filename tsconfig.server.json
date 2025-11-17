@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "moduleResolution": "bundler",
     "target": "es2022",
     "outDir": "./dist",
     "noEmit": false,
@@ -10,17 +10,18 @@
     "resolveJsonModule": true,
     "strict": true,
     "lib": ["es2022"],
-    "types": ["node"]
+    "types": ["node"],
+    "allowImportingTsExtensions": false
   },
   "include": [
     "server/**/*",
     "shared/**/*",
-    "drizzle.config.ts",
-    "vite.config.ts"
+    "drizzle.config.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "client"
+    "client",
+    "server/vite.ts"
   ]
 }
