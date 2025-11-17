@@ -42,12 +42,18 @@ docker-compose down -v
 
 La aplicación estará disponible en `http://localhost:5000`
 
-### 3. Ejecutar Migraciones
+### 3. Migraciones de Base de Datos
 
-Si necesitas ejecutar migraciones de base de datos:
+⚠️ **Las migraciones se ejecutan automáticamente** al iniciar el contenedor.
+
+El script `docker-entrypoint.sh` ejecuta:
+1. `drizzle-kit push --force` para sincronizar el esquema (crea la tabla `sessions` y otras)
+2. Inicia la aplicación
+
+**No necesitas ejecutar migraciones manualmente**, pero si lo necesitas:
 
 ```bash
-docker-compose exec app npm run db:push
+docker-compose exec app npx drizzle-kit push
 ```
 
 ## Solo Docker (sin Docker Compose)

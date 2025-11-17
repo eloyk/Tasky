@@ -28,8 +28,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm ci --only=production
+# Install production dependencies + drizzle-kit for migrations
+RUN npm ci --only=production && npm install drizzle-kit
 
 # Copy built artifacts from builder
 COPY --from=builder /app/dist ./dist
@@ -37,11 +37,18 @@ COPY --from=builder /app/dist ./dist
 # Copy drizzle config to project root (needed by Drizzle at runtime)
 COPY --from=builder /app/dist/drizzle.config.js ./drizzle.config.js
 
+# Copy shared schema (needed for migrations)
+COPY --from=builder /app/shared ./shared
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+
 # Expose port
 EXPOSE 5000
 
 # Set environment
 ENV NODE_ENV=production
 
-# Start the application
-CMD ["npm", "start"]
+# Start the application with migrations
+CMD ["./docker-entrypoint.sh"]
