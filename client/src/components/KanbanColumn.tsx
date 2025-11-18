@@ -22,7 +22,7 @@ export function KanbanColumn({ id, title, tasks, onTaskClick }: KanbanColumnProp
 
       <div
         ref={setNodeRef}
-        className={`flex-1 bg-card/30 border-2 border-dashed rounded-md p-4 min-h-[400px] transition-colors ${
+        className={`flex-1 bg-card/30 border-2 border-dashed rounded-md p-4 min-h-[400px] overflow-y-auto transition-colors ${
           isOver ? "border-primary bg-primary/5" : "border-border"
         }`}
         data-testid={`column-${id}`}
