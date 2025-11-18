@@ -210,7 +210,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-x-auto">
         <div className="h-full p-4 md:p-6">
           {tasksLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">

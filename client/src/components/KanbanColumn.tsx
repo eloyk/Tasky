@@ -13,8 +13,8 @@ export function KanbanColumn({ id, title, tasks, onTaskClick }: KanbanColumnProp
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="bg-card border border-card-border rounded-md p-4 mb-4 sticky top-0 z-10">
+    <div className="flex flex-col h-full min-h-0">
+      <div className="bg-card border border-card-border rounded-md p-4 mb-4 shrink-0">
         <h3 className="text-lg font-medium text-foreground">
           {title} <span className="text-sm text-muted-foreground">({tasks.length})</span>
         </h3>
@@ -22,7 +22,7 @@ export function KanbanColumn({ id, title, tasks, onTaskClick }: KanbanColumnProp
 
       <div
         ref={setNodeRef}
-        className={`flex-1 bg-card/30 border-2 border-dashed rounded-md p-4 min-h-[400px] overflow-y-auto transition-colors ${
+        className={`flex-1 bg-card/30 border-2 border-dashed rounded-md p-4 overflow-y-auto min-h-0 transition-colors ${
           isOver ? "border-primary bg-primary/5" : "border-border"
         }`}
         data-testid={`column-${id}`}
