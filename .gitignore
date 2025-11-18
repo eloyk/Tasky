@@ -7,4 +7,5 @@ vite.config.ts.*
 attached_assets
 .replit
 replit.md
+DOCKER_TROUBLESHOOTING.md
 REPLIT_SETUP.md
