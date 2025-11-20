@@ -1,6 +1,14 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes.js";
 
+// En desarrollo, deshabilitar validación de certificados SSL
+// Esto permite conectarse a servidores Keycloak con certificados autofirmados o no coincidentes
+// ADVERTENCIA: Solo usar en desarrollo, NUNCA en producción
+if (process.env.NODE_ENV === "development") {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  console.log("[Development] SSL certificate validation disabled");
+}
+
 const app = express();
 
 function log(message: string, source = "express") {
