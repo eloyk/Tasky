@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Calendar, Paperclip, MessageSquare, Trash2, Upload, History } from "lucide-react";
 import { Task, Comment, Attachment, insertCommentSchema } from "@shared/schema";
+import DOMPurify from "isomorphic-dompurify";
 
 type ActivityLogWithUser = {
   id: string;
@@ -191,6 +192,15 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
     high: "bg-destructive/90 text-destructive-foreground",
   };
 
+  const sanitizedDescription = useMemo(() => {
+    if (!task.description) return '';
+    return DOMPurify.sanitize(task.description, {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+      ADD_ATTR: ['target', 'rel'],
+    });
+  }, [task.description]);
+
   return (
     <>
       <Sheet open={open} onOpenChange={onClose}>
@@ -218,7 +228,7 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
                   <h4 className="text-sm font-medium mb-2">Descripción</h4>
                   <div 
                     className="text-sm text-muted-foreground leading-normal prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: task.description }}
+                    dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
                   />
                 </div>
               )}

@@ -41,6 +41,19 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           openOnClick: false,
           HTMLAttributes: {
             class: 'text-primary underline cursor-pointer',
+            rel: 'noopener noreferrer',
+            target: '_blank',
+          },
+          validate: (href) => {
+            if (!href || typeof href !== 'string') return false;
+            if (/[\s"'<>]/.test(href)) return false;
+            if (/^(javascript|data|vbscript):/i.test(href)) return false;
+            try {
+              const url = new URL(href);
+              return ['http:', 'https:', 'mailto:'].includes(url.protocol);
+            } catch {
+              return /^mailto:[^\s"'<>]+@[^\s"'<>]+$/.test(href);
+            }
           },
         }),
       ],
