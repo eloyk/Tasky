@@ -123,25 +123,24 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(tasks.createdAt));
   }
 
-  async getTasksByBoard(projectId: string): Promise<Task[]> {
-    const columns = await db
+  async getTasksByBoard(boardId: string): Promise<Task[]> {
+    // First get the board to find its project
+    const [board] = await db
       .select()
-      .from(projectColumns)
-      .where(eq(projectColumns.projectId, projectId));
+      .from(boards)
+      .where(eq(boards.id, boardId))
+      .limit(1);
     
-    const columnIds = columns.map(c => c.id);
-    
-    if (columnIds.length === 0) {
+    if (!board) {
       return [];
     }
     
-    const boardTasks = await db
+    // Get all tasks for this board's project
+    return await db
       .select()
       .from(tasks)
-      .where(inArray(tasks.columnId, columnIds))
+      .where(eq(tasks.projectId, board.projectId))
       .orderBy(desc(tasks.createdAt));
-    
-    return boardTasks;
   }
 
   async getTask(id: string): Promise<Task | undefined> {
