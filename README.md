@@ -9,6 +9,7 @@ Aplicación web de gestión de tareas colaborativa con tablero Kanban, desarroll
 - **Tablero Kanban Intuitivo**: Organiza tareas en columnas (Pendiente, En Progreso, Completada)
 - **Drag & Drop**: Mueve tareas entre columnas fácilmente
 - **Gestión Completa de Tareas**: Crea, edita, elimina y asigna tareas
+- **Editor de Texto Enriquecido**: Formatea descripciones con negrita, cursiva, listas y enlaces
 - **Sistema de Prioridades**: Clasifica tareas como Baja, Media o Alta
 - **Fechas de Vencimiento**: Establece y visualiza fechas límite
 - **Adjuntar Archivos**: Sube archivos a tus tareas usando Object Storage
@@ -28,6 +29,8 @@ Aplicación web de gestión de tareas colaborativa con tablero Kanban, desarroll
 - **Wouter** - Routing ligero
 - **TanStack Query** - Server state management
 - **@dnd-kit** - Drag and drop accesible
+- **Tiptap** - Editor de texto enriquecido
+- **DOMPurify** - Sanitización HTML segura
 - **Tailwind CSS** - Utility-first CSS
 - **shadcn/ui** - Componentes UI de alta calidad
 - **Radix UI** - Primitivos UI accesibles
@@ -69,17 +72,16 @@ Aplicación web de gestión de tareas colaborativa con tablero Kanban, desarroll
    SESSION_SECRET=genera-un-string-aleatorio-seguro
    ```
 
-3. **Instalar dependencias** (automático en Replit):
+3. **Crear workflow de desarrollo**:
+   - En el panel de Workflows de Replit, haz clic en "+ New Workflow"
+   - Nombra el workflow como "Start application"
+   - Agrega una tarea "Execute Shell Command" con el comando: `npm run dev`
+   - Asigna este workflow al botón "Run"
+
+4. **Instalar dependencias** (automático en Replit):
    ```bash
    npm install
    ```
-
-4. **Crear workflow** en Replit:
-   - Presiona `Cmd/Ctrl + K`
-   - Busca "Workflows"
-   - Crea nuevo workflow: `Iniciar Aplicación`
-   - Comando: `npm run dev`
-   - Asigna al botón "Run"
 
 5. **Ejecutar la aplicación**:
    - Presiona el botón "Run"
