@@ -1,4 +1,4 @@
-import { Building2, FolderKanban, Home, Settings } from "lucide-react";
+import { FolderKanban, Home } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -19,19 +19,9 @@ const menuItems = [
     icon: Home,
   },
   {
-    title: "Organizaciones",
-    url: "/organizations",
-    icon: Building2,
-  },
-  {
     title: "Proyectos",
     url: "/projects",
     icon: FolderKanban,
-  },
-  {
-    title: "Configuración",
-    url: "/settings",
-    icon: Settings,
   },
 ];
 

@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { FolderKanban, Plus, Pencil, Trash2, Settings } from "lucide-react";
-import { Link } from "wouter";
+import { FolderKanban, Plus, Pencil, Trash2 } from "lucide-react";
+import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Project, InsertProject, Organization } from "@shared/schema";
@@ -26,20 +26,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Projects() {
-  const [selectedOrgId, setSelectedOrgId] = useState<string>("");
+  const [, setLocation] = useLocation();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -47,38 +40,24 @@ export default function Projects() {
   const [formData, setFormData] = useState({ name: "", description: "" });
   const { toast } = useToast();
 
+  // Obtener la organización del usuario (siempre hay una)
   const { data: organizations = [], isLoading: orgsLoading } = useQuery<Organization[]>({
     queryKey: ["/api/organizations"],
   });
 
+  // Usar la primera (y única) organización del usuario
+  const userOrg = organizations[0];
+
+  // Obtener todos los proyectos del usuario (de su organización)
   const { data: projects = [], isLoading: projectsLoading } = useQuery<Project[]>({
-    queryKey: ["/api/organizations", selectedOrgId, "projects"],
-    enabled: !!selectedOrgId,
+    queryKey: ["/api/projects"],
   });
-
-  // Manejar auto-selección y limpieza de organización seleccionada
-  useEffect(() => {
-    // Si no hay organizaciones, limpiar selección
-    if (organizations.length === 0) {
-      if (selectedOrgId) {
-        setSelectedOrgId("");
-      }
-      return;
-    }
-
-    // Si la organización seleccionada ya no existe, seleccionar la primera
-    const currentOrgExists = organizations.some(org => org.id === selectedOrgId);
-    if (!currentOrgExists) {
-      setSelectedOrgId(organizations[0].id);
-    }
-  }, [organizations, selectedOrgId]);
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertProject) => {
       return await apiRequest("POST", "/api/projects", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organizations", selectedOrgId, "projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setCreateDialogOpen(false);
       setFormData({ name: "", description: "" });
@@ -101,7 +80,6 @@ export default function Projects() {
       return await apiRequest("PATCH", `/api/projects/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organizations", selectedOrgId, "projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setEditDialogOpen(false);
       setSelectedProject(null);
@@ -125,7 +103,6 @@ export default function Projects() {
       return await apiRequest("DELETE", `/api/projects/${id}`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organizations", selectedOrgId, "projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setDeleteDialogOpen(false);
       setSelectedProject(null);
@@ -144,10 +121,19 @@ export default function Projects() {
   });
 
   const handleCreate = () => {
+    if (!userOrg) {
+      toast({
+        title: "Error",
+        description: "No se pudo obtener la organización.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     createMutation.mutate({
       name: formData.name,
       description: formData.description || null,
-      organizationId: selectedOrgId,
+      organizationId: userOrg.id,
       createdById: "", // Backend will set this from authenticated user
     });
   };
@@ -194,20 +180,15 @@ export default function Projects() {
     );
   }
 
-  if (organizations.length === 0) {
+  if (organizations.length === 0 && !orgsLoading) {
     return (
       <div className="p-8">
         <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg">
           <FolderKanban className="w-16 h-16 text-muted-foreground mb-4" />
-          <h2 className="text-xl font-semibold mb-2">No hay organizaciones</h2>
-          <p className="text-muted-foreground mb-4">
-            Necesitas crear una organización primero para poder gestionar proyectos.
+          <h2 className="text-xl font-semibold mb-2">Cargando organización...</h2>
+          <p className="text-muted-foreground">
+            Estamos configurando tu espacio de trabajo.
           </p>
-          <Link href="/organizations">
-            <Button>
-              Ir a Organizaciones
-            </Button>
-          </Link>
         </div>
       </div>
     );
@@ -219,30 +200,17 @@ export default function Projects() {
         <div>
           <h1 className="text-3xl font-bold">Proyectos</h1>
           <p className="text-muted-foreground mt-2">
-            Gestiona los proyectos de tu organización.
+            Gestiona tus proyectos.
           </p>
         </div>
-        <div className="flex items-center gap-4">
-          <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
-            <SelectTrigger className="w-64" data-testid="select-organization">
-              <SelectValue placeholder="Selecciona una organización" />
-            </SelectTrigger>
-            <SelectContent>
-              {organizations.map((org) => (
-                <SelectItem key={org.id} value={org.id}>
-                  {org.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button disabled={!selectedOrgId} data-testid="button-create-project">
-                <Plus className="w-4 h-4 mr-2" />
-                Nuevo Proyecto
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
+        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+          <DialogTrigger asChild>
+            <Button disabled={!userOrg} data-testid="button-create-project">
+              <Plus className="w-4 h-4 mr-2" />
+              Nuevo Proyecto
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
               <DialogHeader>
                 <DialogTitle>Crear Nuevo Proyecto</DialogTitle>
                 <DialogDescription>
@@ -288,20 +256,11 @@ export default function Projects() {
                   {createMutation.isPending ? "Creando..." : "Crear"}
                 </Button>
               </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {!selectedOrgId ? (
-        <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg">
-          <FolderKanban className="w-16 h-16 text-muted-foreground mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Selecciona una organización</h2>
-          <p className="text-muted-foreground">
-            Selecciona una organización para ver sus proyectos.
-          </p>
-        </div>
-      ) : projectsLoading ? (
+      {projectsLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Skeleton className="h-48" />
           <Skeleton className="h-48" />
@@ -330,31 +289,34 @@ export default function Projects() {
                   <CardDescription>{project.description}</CardDescription>
                 )}
               </CardHeader>
-              <CardFooter className="flex gap-2">
+              <CardFooter className="flex justify-between gap-2">
                 <Button
-                  variant="outline"
+                  variant="default"
                   size="sm"
-                  onClick={() => openEditDialog(project)}
-                  data-testid={`button-edit-${project.id}`}
+                  onClick={() => setLocation(`/?project=${project.id}`)}
+                  data-testid={`button-open-${project.id}`}
                 >
-                  <Pencil className="w-4 h-4 mr-1" />
-                  Editar
+                  <FolderKanban className="w-4 h-4 mr-1" />
+                  Abrir Tablero
                 </Button>
-                <Link href={`/projects/${project.id}/columns`}>
-                  <Button variant="outline" size="sm" data-testid={`button-columns-${project.id}`}>
-                    <Settings className="w-4 h-4 mr-1" />
-                    Columnas
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openEditDialog(project)}
+                    data-testid={`button-edit-${project.id}`}
+                  >
+                    <Pencil className="w-4 h-4" />
                   </Button>
-                </Link>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openDeleteDialog(project)}
-                  data-testid={`button-delete-${project.id}`}
-                >
-                  <Trash2 className="w-4 h-4 mr-1" />
-                  Eliminar
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openDeleteDialog(project)}
+                    data-testid={`button-delete-${project.id}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </CardFooter>
             </Card>
           ))}

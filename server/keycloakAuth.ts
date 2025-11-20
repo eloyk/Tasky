@@ -95,38 +95,36 @@ async function upsertUser(claims: any) {
       .limit(1);
 
     if (!membership) {
-      console.log("[upsertUser] User not in any organization, adding to default...");
+      console.log("[upsertUser] User not in any organization, creating personal organization...");
       
-      // Get or create default organization
-      const DEFAULT_ORG_NAME = "Organización Principal";
-      let [defaultOrg] = await db
-        .select()
-        .from(organizations)
-        .where(eq(organizations.name, DEFAULT_ORG_NAME))
-        .limit(1);
+      // Create personal organization for this user
+      const userDisplayName = result.firstName && result.lastName 
+        ? `${result.firstName} ${result.lastName}`
+        : result.firstName || result.email?.split('@')[0] || 'Usuario';
+      
+      const orgName = `Organización de ${userDisplayName}`;
+      
+      const [userOrg] = await db
+        .insert(organizations)
+        .values({
+          name: orgName,
+          description: "Organización personal",
+          ownerId: result.id,
+        })
+        .returning();
+      
+      console.log("[upsertUser] Created personal organization:", userOrg.id);
 
-      if (!defaultOrg) {
-        // Create default organization if it doesn't exist
-        [defaultOrg] = await db
-          .insert(organizations)
-          .values({
-            name: DEFAULT_ORG_NAME,
-            description: "Organización por defecto",
-            ownerId: result.id,
-          })
-          .returning();
-        
-        console.log("[upsertUser] Created default organization:", defaultOrg.id);
-      }
-
-      // Add user to organization
+      // Add user to organization as owner
       await db.insert(organizationMembers).values({
-        organizationId: defaultOrg.id,
+        organizationId: userOrg.id,
         userId: result.id,
-        role: 'member',
+        role: 'owner',
       });
 
-      console.log("[upsertUser] Added user to organization:", defaultOrg.id);
+      console.log("[upsertUser] Added user to organization as owner:", userOrg.id);
+      
+      const defaultOrg = userOrg;
 
       // Get or create default project
       const DEFAULT_PROJECT_NAME = "Proyecto General";
