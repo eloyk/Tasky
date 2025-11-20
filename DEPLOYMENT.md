@@ -11,7 +11,86 @@ El schema se corrigió para que las **columnas pertenezcan a proyectos**, no a b
 pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
-## Sincronización de Base de Datos de Producción
+## ✨ Migración Automática (Recomendado)
+
+Hemos creado un script de migración completamente automático que detecta el estado de tu base de datos y ejecuta todos los pasos necesarios.
+
+### Opción 1: Usar el script shell (Linux/Mac/Docker)
+
+```bash
+# Asegúrate de que DATABASE_URL está configurado
+export DATABASE_URL="postgresql://..."
+
+# Ejecutar migración
+./migrate.sh
+```
+
+### Opción 2: Usar npx directamente (Cualquier plataforma)
+
+```bash
+# Asegúrate de que DATABASE_URL está configurado
+export DATABASE_URL="postgresql://..."
+
+# Ejecutar migración
+npx tsx server/migrate.ts
+
+# O solo verificar el estado sin migrar
+npx tsx server/migrate.ts verify
+```
+
+### ¿Qué hace la migración automática?
+
+El script automáticamente:
+
+1. ✅ **Verifica el estado actual** de tu base de datos
+2. ✅ **Crea la tabla `boards`** si no existe
+3. ✅ **Crea boards por defecto** para cada proyecto
+4. ✅ **Migra `project_columns`**: renombra `board_id` → `project_id`
+5. ✅ **Migra `tasks`**: convierte `status` → `column_id`
+6. ✅ **Actualiza constraints e índices** correctamente
+7. ✅ **Verifica** que todo funcionó correctamente
+8. ✅ **Es idempotente**: puedes ejecutarlo múltiples veces sin problemas
+
+### Salida esperada
+
+```
+🚀 Iniciando migración automática de base de datos...
+
+📋 Crear tabla boards
+  → Creando tabla boards...
+  ✓ Tabla boards creada
+
+📋 Crear boards por defecto para proyectos
+  → Creando boards por defecto...
+  ✓ 5 boards creados
+
+📋 Migrar project_columns.board_id → project_id
+  → Migrando project_columns...
+    • Renombrando board_id → project_id
+    • Actualizando valores de project_id
+    • Eliminando constraint antiguo
+    • Agregando nuevo constraint
+    • Eliminando índice antiguo
+    • Creando índice único
+  ✓ project_columns migrado correctamente
+
+📋 Migrar tasks.status → tasks.column_id
+  → Migrando tasks...
+    • Agregando columna column_id
+    • Mapeando valores de status a column_id
+    • Configurando column_id como NOT NULL
+    • Agregando foreign key constraint
+    • Eliminando columna status
+  ✓ tasks migrado correctamente
+
+═══════════════════════════════════════════════════
+✅ Migración completada exitosamente!
+   • Pasos completados: 4
+   • Pasos omitidos (ya hechos): 0
+═══════════════════════════════════════════════════
+```
+
+## 🔧 Migración Manual (Solo si la automática falla)
 
 ### Paso 1: Migración Manual de Columnas
 
