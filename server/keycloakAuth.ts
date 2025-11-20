@@ -8,7 +8,7 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage.js";
 import { db } from "./db.js";
-import { organizations, organizationMembers, projects, projectMembers } from "../shared/schema.js";
+import { organizations, organizationMembers, projects, projectMembers, boards } from "../shared/schema.js";
 import { eq, and } from "drizzle-orm";
 import { createDefaultProjectColumns } from "./projectHelpers.js";
 
@@ -151,8 +151,21 @@ async function upsertUser(claims: any) {
         
         console.log("[upsertUser] Created default project:", defaultProject.id);
         
-        // Create default columns for the project
-        await createDefaultProjectColumns(defaultProject.id);
+        // Create default board for the project
+        const [defaultBoard] = await db
+          .insert(boards)
+          .values({
+            name: "Tablero Principal",
+            description: "Tablero por defecto",
+            projectId: defaultProject.id,
+            createdById: result.id,
+          })
+          .returning();
+
+        console.log("[upsertUser] Created default board:", defaultBoard.id);
+        
+        // Create default columns for the board
+        await createDefaultProjectColumns(defaultBoard.id);
       }
 
       // Add user to project

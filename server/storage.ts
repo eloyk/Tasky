@@ -4,6 +4,10 @@ import {
   comments,
   attachments,
   activityLog,
+  boards,
+  projectColumns,
+  organizationMembers,
+  projects,
   type User,
   type UpsertUser,
   type Task,
@@ -14,9 +18,21 @@ import {
   type InsertAttachment,
   type ActivityLog,
   type InsertActivityLog,
+  type Board,
+  type InsertBoard,
 } from "../shared/schema.js";
 import { db } from "./db.js";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, count, inArray } from "drizzle-orm";
+
+export interface AnalyticsOverview {
+  totalTasks: number;
+  tasksByStatus: { columnName: string; count: number }[];
+  tasksByPriority: { priority: string; count: number }[];
+  overdueTasks: number;
+  completedLast7Days: number;
+  upcomingDueTasks: number;
+  recentActivity: any[];
+}
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -24,6 +40,7 @@ export interface IStorage {
 
   getAllTasks(): Promise<Task[]>;
   getTasksByProject(projectId: string): Promise<Task[]>;
+  getTasksByBoard(boardId: string): Promise<Task[]>;
   getTask(id: string): Promise<Task | undefined>;
   createTask(task: InsertTask): Promise<Task>;
   updateTaskColumn(id: string, columnId: string): Promise<Task | undefined>;
@@ -37,6 +54,14 @@ export interface IStorage {
 
   getTaskActivity(taskId: string): Promise<ActivityLog[]>;
   createActivityLog(activity: InsertActivityLog): Promise<ActivityLog>;
+
+  createBoard(data: InsertBoard): Promise<Board>;
+  getBoard(id: string): Promise<Board | undefined>;
+  getBoardsByProject(projectId: string): Promise<Board[]>;
+  updateBoard(id: string, data: Partial<InsertBoard>): Promise<Board | undefined>;
+  deleteBoard(id: string): Promise<boolean>;
+
+  getAnalyticsOverview(userId: string): Promise<AnalyticsOverview>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -96,6 +121,27 @@ export class DatabaseStorage implements IStorage {
       .from(tasks)
       .where(eq(tasks.projectId, projectId))
       .orderBy(desc(tasks.createdAt));
+  }
+
+  async getTasksByBoard(boardId: string): Promise<Task[]> {
+    const columns = await db
+      .select()
+      .from(projectColumns)
+      .where(eq(projectColumns.boardId, boardId));
+    
+    const columnIds = columns.map(c => c.id);
+    
+    if (columnIds.length === 0) {
+      return [];
+    }
+    
+    const boardTasks = await db
+      .select()
+      .from(tasks)
+      .where(inArray(tasks.columnId, columnIds))
+      .orderBy(desc(tasks.createdAt));
+    
+    return boardTasks;
   }
 
   async getTask(id: string): Promise<Task | undefined> {
@@ -187,6 +233,216 @@ export class DatabaseStorage implements IStorage {
       .values(activityData)
       .returning();
     return activity;
+  }
+
+  async createBoard(boardData: InsertBoard): Promise<Board> {
+    const [board] = await db
+      .insert(boards)
+      .values(boardData)
+      .returning();
+    return board;
+  }
+
+  async getBoard(id: string): Promise<Board | undefined> {
+    const [board] = await db.select().from(boards).where(eq(boards.id, id));
+    return board;
+  }
+
+  async getBoardsByProject(projectId: string): Promise<Board[]> {
+    return await db
+      .select()
+      .from(boards)
+      .where(eq(boards.projectId, projectId))
+      .orderBy(desc(boards.createdAt));
+  }
+
+  async updateBoard(id: string, data: Partial<InsertBoard>): Promise<Board | undefined> {
+    const [board] = await db
+      .update(boards)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(boards.id, id))
+      .returning();
+    return board;
+  }
+
+  async deleteBoard(id: string): Promise<boolean> {
+    const result = await db.delete(boards).where(eq(boards.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  async getAnalyticsOverview(userId: string): Promise<AnalyticsOverview> {
+    // Get organizations where user is a member
+    const userOrgs = await db
+      .select()
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, userId));
+    
+    if (userOrgs.length === 0) {
+      return {
+        totalTasks: 0,
+        overdueTasks: 0,
+        completedLast7Days: 0,
+        upcomingDueTasks: 0,
+        tasksByStatus: [],
+        tasksByPriority: [],
+        recentActivity: [],
+      };
+    }
+    
+    // Get projects from those organizations
+    const orgIds = userOrgs.map(o => o.organizationId);
+    const userProjects = await db
+      .select()
+      .from(projects)
+      .where(inArray(projects.organizationId, orgIds));
+    
+    const projectIds = userProjects.map(p => p.id);
+    
+    if (projectIds.length === 0) {
+      return {
+        totalTasks: 0,
+        overdueTasks: 0,
+        completedLast7Days: 0,
+        upcomingDueTasks: 0,
+        tasksByStatus: [],
+        tasksByPriority: [],
+        recentActivity: [],
+      };
+    }
+    
+    // Get tasks from those projects
+    const userTasks = await db
+      .select()
+      .from(tasks)
+      .where(inArray(tasks.projectId, projectIds));
+
+    const totalTasks = userTasks.length;
+
+    const tasksByStatusResult = await db
+      .select({
+        columnId: tasks.columnId,
+        count: sql<number>`cast(count(*) as integer)`,
+      })
+      .from(tasks)
+      .where(inArray(tasks.projectId, projectIds))
+      .groupBy(tasks.columnId);
+
+    const columnsMap = new Map<string, string>();
+    const uniqueColumnIds = Array.from(new Set(tasksByStatusResult.map(t => t.columnId).filter(Boolean)));
+    
+    if (uniqueColumnIds.length > 0) {
+      const columns = await db
+        .select()
+        .from(projectColumns)
+        .where(sql`${projectColumns.id} = ANY(${uniqueColumnIds})`);
+      
+      columns.forEach(col => columnsMap.set(col.id, col.name));
+    }
+
+    const tasksByStatus = tasksByStatusResult.map(item => ({
+      columnName: columnsMap.get(item.columnId) || 'Sin columna',
+      count: item.count || 0,
+    }));
+
+    const tasksByPriorityResult = await db
+      .select({
+        priority: tasks.priority,
+        count: sql<number>`cast(count(*) as integer)`,
+      })
+      .from(tasks)
+      .where(inArray(tasks.projectId, projectIds))
+      .groupBy(tasks.priority);
+
+    const tasksByPriority = tasksByPriorityResult.map(item => ({
+      priority: item.priority || 'medium',
+      count: item.count || 0,
+    }));
+
+    const now = new Date();
+    const overdueTasksResult = await db
+      .select({ count: sql<number>`cast(count(*) as integer)` })
+      .from(tasks)
+      .where(
+        and(
+          inArray(tasks.projectId, projectIds),
+          lte(tasks.dueDate, now)
+        )
+      );
+
+    const overdueTasks = overdueTasksResult[0]?.count || 0;
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    let completedLast7Days = 0;
+    try {
+      const completedLast7DaysResult = await db
+        .select({ count: sql<number>`cast(count(*) as integer)` })
+        .from(tasks)
+        .innerJoin(projectColumns, eq(tasks.columnId, projectColumns.id))
+        .where(
+          and(
+            inArray(tasks.projectId, projectIds),
+            gte(tasks.updatedAt, sevenDaysAgo),
+            sql`lower(${projectColumns.name}) LIKE '%completad%'`
+          )
+        );
+
+      completedLast7Days = completedLast7DaysResult[0]?.count || 0;
+    } catch (error) {
+      console.warn("Error calculating completedLast7Days, returning 0:", error);
+      completedLast7Days = 0;
+    }
+
+    const threeDaysFromNow = new Date();
+    threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+
+    const upcomingDueTasksResult = await db
+      .select({ count: sql<number>`cast(count(*) as integer)` })
+      .from(tasks)
+      .where(
+        and(
+          inArray(tasks.projectId, projectIds),
+          gte(tasks.dueDate, now),
+          lte(tasks.dueDate, threeDaysFromNow)
+        )
+      );
+
+    const upcomingDueTasks = upcomingDueTasksResult[0]?.count || 0;
+
+    const recentActivity = await db
+      .select({
+        id: activityLog.id,
+        taskId: activityLog.taskId,
+        userId: activityLog.userId,
+        actionType: activityLog.actionType,
+        fieldName: activityLog.fieldName,
+        oldValue: activityLog.oldValue,
+        newValue: activityLog.newValue,
+        createdAt: activityLog.createdAt,
+        user: {
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          profileImageUrl: users.profileImageUrl,
+        }
+      })
+      .from(activityLog)
+      .leftJoin(users, eq(activityLog.userId, users.id))
+      .where(eq(activityLog.userId, userId))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(10);
+
+    return {
+      totalTasks,
+      tasksByStatus,
+      tasksByPriority,
+      overdueTasks,
+      completedLast7Days,
+      upcomingDueTasks,
+      recentActivity,
+    };
   }
 }
 

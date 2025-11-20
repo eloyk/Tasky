@@ -44,10 +44,23 @@ interface CreateTaskDialogProps {
   isPending: boolean;
   userId?: string;
   testIdPrefix?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefix = "" }: CreateTaskDialogProps) {
-  const [open, setOpen] = useState(false);
+export function CreateTaskDialog({ 
+  onSubmit, 
+  isPending, 
+  userId = "", 
+  testIdPrefix = "",
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange
+}: CreateTaskDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  
+  // Use controlled state if provided, otherwise use internal state
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = controlledOnOpenChange !== undefined ? controlledOnOpenChange : setInternalOpen;
 
   // Obtener proyectos del usuario
   const { data: projects = [], isLoading: isLoadingProjects } = useQuery<Project[]>({
@@ -153,12 +166,14 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button data-testid={testIdPrefix ? `${testIdPrefix}-button-create-task` : "button-create-task"}>
-          <Plus className="w-5 h-5 mr-2" />
-          Nueva Tarea
-        </Button>
-      </DialogTrigger>
+      {controlledOpen === undefined && (
+        <DialogTrigger asChild>
+          <Button data-testid={testIdPrefix ? `${testIdPrefix}-button-create-task` : "button-create-task"}>
+            <Plus className="w-5 h-5 mr-2" />
+            Nueva Tarea
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Crear Nueva Tarea</DialogTitle>

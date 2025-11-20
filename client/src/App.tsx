@@ -10,6 +10,8 @@ import Landing from "@/pages/landing";
 import Home from "@/pages/home";
 import Organizations from "@/pages/organizations";
 import Projects from "@/pages/projects";
+import Boards from "@/pages/boards";
+import BoardView from "@/pages/board-view";
 import ProjectColumns from "@/pages/project-columns";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
@@ -32,6 +34,8 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/organizations" component={Organizations} />
         <Route path="/projects" component={Projects} />
+        <Route path="/projects/:id/boards" component={Boards} />
+        <Route path="/boards/:id" component={BoardView} />
         <Route path="/projects/:id/columns" component={ProjectColumns} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />

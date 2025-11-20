@@ -94,6 +94,7 @@ export const projects = pgTable("projects", {
 
 export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
+  createdById: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -126,16 +127,37 @@ export const insertProjectMemberSchema = createInsertSchema(projectMembers).omit
 export type InsertProjectMember = z.infer<typeof insertProjectMemberSchema>;
 export type ProjectMember = typeof projectMembers.$inferSelect;
 
-// Project columns table - columnas personalizables para cada proyecto
-export const projectColumns = pgTable("project_columns", {
+// Boards table - múltiples tableros por proyecto
+export const boards = pgTable("boards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  createdById: varchar("created_by_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBoardSchema = createInsertSchema(boards).omit({
+  id: true,
+  createdById: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertBoard = z.infer<typeof insertBoardSchema>;
+export type Board = typeof boards.$inferSelect;
+
+// Project columns table - columnas personalizables para cada tablero
+export const projectColumns = pgTable("project_columns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  boardId: varchar("board_id").notNull().references(() => boards.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 100 }).notNull(),
   order: integer("order").notNull(),
   color: varchar("color", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
-  uniqueProjectOrder: index("unique_project_order").on(table.projectId, table.order),
+  uniqueBoardOrder: index("unique_board_order").on(table.boardId, table.order),
 }));
 
 export const insertProjectColumnSchema = createInsertSchema(projectColumns).omit({

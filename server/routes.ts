@@ -16,6 +16,7 @@ import {
   insertOrganizationMemberSchema,
   insertProjectMemberSchema,
   insertProjectColumnSchema,
+  insertBoardSchema,
   users,
   organizations,
   projects,
@@ -23,13 +24,117 @@ import {
   organizationMembers,
   projectMembers,
   projectColumns,
+  boards,
   OrganizationRole,
   ProjectRole
 } from "../shared/schema.js";
 import { db } from "./db.js";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { createDefaultProjectColumns } from "./projectHelpers.js";
+import type { Task, Board, Project } from "../shared/schema.js";
+
+// Helper function to verify user has access to a task
+async function verifyTaskAccess(taskId: string, userId: string): Promise<{ task: Task | null; allowed: boolean }> {
+  const taskResult = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  
+  if (taskResult.length === 0) {
+    return { task: null, allowed: false };
+  }
+  
+  const task = taskResult[0];
+  
+  // Get task's project
+  const projectResult = await db.select().from(projects).where(eq(projects.id, task.projectId)).limit(1);
+  
+  if (projectResult.length === 0) {
+    return { task, allowed: false };
+  }
+  
+  const project = projectResult[0];
+  
+  // Check if user is member of project's organization
+  const membership = await db
+    .select()
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.organizationId, project.organizationId)
+      )
+    )
+    .limit(1);
+  
+  return {
+    task,
+    allowed: membership.length > 0
+  };
+}
+
+// Helper function to verify user has access to a board
+async function verifyBoardAccess(boardId: string, userId: string): Promise<{ board: Board | null; allowed: boolean }> {
+  const boardResult = await db.select().from(boards).where(eq(boards.id, boardId)).limit(1);
+  
+  if (boardResult.length === 0) {
+    return { board: null, allowed: false };
+  }
+  
+  const board = boardResult[0];
+  
+  // Get board's project
+  const projectResult = await db.select().from(projects).where(eq(projects.id, board.projectId)).limit(1);
+  
+  if (projectResult.length === 0) {
+    return { board, allowed: false };
+  }
+  
+  const project = projectResult[0];
+  
+  // Check if user is member of project's organization
+  const membership = await db
+    .select()
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.organizationId, project.organizationId)
+      )
+    )
+    .limit(1);
+  
+  return {
+    board,
+    allowed: membership.length > 0
+  };
+}
+
+// Helper function to verify user has access to a project
+async function verifyProjectAccess(projectId: string, userId: string): Promise<{ project: Project | null; allowed: boolean }> {
+  const projectResult = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+  
+  if (projectResult.length === 0) {
+    return { project: null, allowed: false };
+  }
+  
+  const project = projectResult[0];
+  
+  // Check if user is member of project's organization
+  const membership = await db
+    .select()
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.organizationId, project.organizationId)
+      )
+    )
+    .limit(1);
+  
+  return {
+    project,
+    allowed: membership.length > 0
+  };
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
@@ -58,34 +163,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/tasks", isAuthenticated, async (req: any, res) => {
     try {
-      const projectId = req.query.projectId as string;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
-      if (projectId) {
-        // Filter by specific project
-        const tasks = await storage.getTasksByProject(projectId);
-        res.json(tasks);
-      } else {
-        // Return all tasks (for backward compatibility)
-        const tasks = await storage.getAllTasks();
-        res.json(tasks);
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
       }
+      
+      // CRITICAL: Get user's organizations to enforce tenant isolation
+      const userOrgs = await db
+        .select()
+        .from(organizationMembers)
+        .where(eq(organizationMembers.userId, user.id));
+      
+      if (userOrgs.length === 0) {
+        return res.json([]); // No organizations = no tasks
+      }
+      
+      const orgIds = userOrgs.map(o => o.organizationId);
+      
+      // Get projects from user's organizations
+      const userProjects = await db
+        .select()
+        .from(projects)
+        .where(inArray(projects.organizationId, orgIds));
+      
+      if (userProjects.length === 0) {
+        return res.json([]);
+      }
+      
+      const projectIds = userProjects.map(p => p.id);
+      
+      // CRITICAL: Only return tasks from user's projects (tenant-isolated)
+      const userTasks = await db
+        .select()
+        .from(tasks)
+        .where(inArray(tasks.projectId, projectIds));
+      
+      res.json(userTasks);
     } catch (error) {
       console.error("Error fetching tasks:", error);
-      res.status(500).json({ message: "Failed to fetch tasks" });
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.get("/api/tasks/:id", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const task = await storage.getTask(id);
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      const { task, allowed } = await verifyTaskAccess(id, user.id);
+      
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       res.json(task);
     } catch (error) {
       console.error("Error fetching task:", error);
-      res.status(500).json({ message: "Failed to fetch task" });
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -98,11 +243,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
       
-      const validatedData = insertTaskSchema.parse({
-        ...req.body,
+      const validated = insertTaskSchema.safeParse(req.body);
+      
+      if (!validated.success) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: validated.error.errors,
+        });
+      }
+      
+      // CRITICAL: Verify user has access to the project
+      const project = await db.select().from(projects).where(eq(projects.id, validated.data.projectId)).limit(1);
+      
+      if (project.length === 0) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      const membership = await db
+        .select()
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.userId, user.id),
+            eq(organizationMembers.organizationId, project[0].organizationId)
+          )
+        )
+        .limit(1);
+      
+      if (membership.length === 0) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const task = await storage.createTask({
+        ...validated.data,
         createdById: user.id,
       });
-      const task = await storage.createTask(validatedData);
       
       // Log task creation
       await storage.createActivityLog({
@@ -116,7 +291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(task);
     } catch (error) {
       console.error("Error creating task:", error);
-      res.status(400).json({ message: "Failed to create task" });
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -129,6 +304,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
+      }
+      
+      // CRITICAL: Verify user has access to the task
+      const { task: verifiedTask, allowed } = await verifyTaskAccess(id, user.id);
+      
+      if (!verifiedTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
       }
       
       if (!columnId) {
@@ -151,7 +337,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Column not found" });
       }
 
-      if (targetColumn.projectId !== oldTask.projectId) {
+      // Get the board to verify it belongs to the same project as the task
+      const [targetBoard] = await db
+        .select()
+        .from(boards)
+        .where(eq(boards.id, targetColumn.boardId));
+
+      if (!targetBoard || targetBoard.projectId !== oldTask.projectId) {
         return res.status(400).json({ message: "Column does not belong to task's project" });
       }
 
@@ -183,11 +375,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/tasks/:id", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      const { task, allowed } = await verifyTaskAccess(id, user.id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       await storage.deleteTask(id);
       res.json({ message: "Task deleted successfully" });
     } catch (error) {
       console.error("Error deleting task:", error);
-      res.status(500).json({ message: "Failed to delete task" });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/analytics/overview", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const analytics = await storage.getAnalyticsOverview(user.id);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching analytics:", error);
+      res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
 
@@ -577,11 +803,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Not a member of this project" });
       }
 
-      // Get columns ordered by order field
+      // Get all boards for this project
+      const projectBoards = await db
+        .select()
+        .from(boards)
+        .where(eq(boards.projectId, projectId));
+
+      if (projectBoards.length === 0) {
+        return res.json([]);
+      }
+
+      // Get columns from all boards ordered by order field
+      const boardIds = projectBoards.map(board => board.id);
       const columns = await db
         .select()
         .from(projectColumns)
-        .where(eq(projectColumns.projectId, projectId))
+        .where(sql`${projectColumns.boardId} = ANY(${boardIds})`)
         .orderBy(projectColumns.order);
 
       res.json(columns);
@@ -624,16 +861,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Only project admins can add columns" });
       }
 
+      // Get the first board of the project (for backward compatibility)
+      const [firstBoard] = await db
+        .select()
+        .from(boards)
+        .where(eq(boards.projectId, projectId))
+        .limit(1);
+
+      if (!firstBoard) {
+        return res.status(404).json({ message: "No board found for this project" });
+      }
+
       // Get max order to place new column at the end
       const maxOrder = await db
         .select({ maxOrder: sql<number>`COALESCE(MAX(${projectColumns.order}), -1)` })
         .from(projectColumns)
-        .where(eq(projectColumns.projectId, projectId));
+        .where(eq(projectColumns.boardId, firstBoard.id));
 
       // Validate input with Zod schema using safeParse
       const validation = insertProjectColumnSchema.safeParse({
         name: req.body.name,
-        projectId,
+        boardId: firstBoard.id,
         order: (maxOrder[0]?.maxOrder ?? -1) + 1,
       });
 
@@ -663,17 +911,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Verify column exists and belongs to project first
+      // Verify column exists first
       const [existingColumn] = await db
         .select()
         .from(projectColumns)
-        .where(and(
-          eq(projectColumns.id, columnId),
-          eq(projectColumns.projectId, projectId)
-        ));
+        .where(eq(projectColumns.id, columnId));
 
       if (!existingColumn) {
         return res.status(404).json({ message: "Column not found" });
+      }
+
+      // Get the board to verify it belongs to the project
+      const [board] = await db
+        .select()
+        .from(boards)
+        .where(and(
+          eq(boards.id, existingColumn.boardId),
+          eq(boards.projectId, projectId)
+        ));
+
+      if (!board) {
+        return res.status(404).json({ message: "Column does not belong to this project" });
       }
 
       // Check if user is admin of the project
@@ -707,10 +965,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [updated] = await db
         .update(projectColumns)
         .set({ name: validation.data })
-        .where(and(
-          eq(projectColumns.id, columnId),
-          eq(projectColumns.projectId, projectId)
-        ))
+        .where(eq(projectColumns.id, columnId))
         .returning();
 
       res.json(updated);
@@ -730,17 +985,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Verify column exists and belongs to project first
+      // Verify column exists first
       const [columnToDelete] = await db
         .select()
         .from(projectColumns)
-        .where(and(
-          eq(projectColumns.id, columnId),
-          eq(projectColumns.projectId, projectId)
-        ));
+        .where(eq(projectColumns.id, columnId));
 
       if (!columnToDelete) {
         return res.status(404).json({ message: "Column not found" });
+      }
+
+      // Get the board to verify it belongs to the project
+      const [board] = await db
+        .select()
+        .from(boards)
+        .where(and(
+          eq(boards.id, columnToDelete.boardId),
+          eq(boards.projectId, projectId)
+        ));
+
+      if (!board) {
+        return res.status(404).json({ message: "Column does not belong to this project" });
       }
 
       // Check if user is admin of the project
@@ -761,14 +1026,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if column has tasks (prevent deletion if it does)
-      // Must filter by both columnId AND projectId to ensure we're checking the right column
       const tasksInColumn = await db
         .select()
         .from(tasks)
-        .where(and(
-          eq(tasks.columnId, columnId),
-          eq(tasks.projectId, projectId)
-        ))
+        .where(eq(tasks.columnId, columnId))
         .limit(1);
 
       if (tasksInColumn.length > 0) {
@@ -777,10 +1038,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await db
         .delete(projectColumns)
-        .where(and(
-          eq(projectColumns.id, columnId),
-          eq(projectColumns.projectId, projectId)
-        ));
+        .where(eq(projectColumns.id, columnId));
 
       res.json({ message: "Column deleted successfully" });
     } catch (error) {
@@ -837,14 +1095,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Update order for each column
+      // Get all boards for this project
+      const projectBoards = await db
+        .select()
+        .from(boards)
+        .where(eq(boards.projectId, projectId));
+
+      if (projectBoards.length === 0) {
+        return res.status(404).json({ message: "No boards found for this project" });
+      }
+
+      const boardIds = projectBoards.map(board => board.id);
+
+      // Update order for each column (verify they belong to this project's boards)
       for (const column of validation.data) {
         await db
           .update(projectColumns)
           .set({ order: column.order })
           .where(and(
             eq(projectColumns.id, column.id),
-            eq(projectColumns.projectId, projectId)
+            sql`${projectColumns.boardId} = ANY(${boardIds})`
           ));
       }
 
@@ -852,7 +1122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedColumns = await db
         .select()
         .from(projectColumns)
-        .where(eq(projectColumns.projectId, projectId))
+        .where(sql`${projectColumns.boardId} = ANY(${boardIds})`)
         .orderBy(projectColumns.order);
 
       res.json(updatedColumns);
@@ -1026,6 +1296,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/tasks/:id/comments", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      // CRITICAL: Verify task access
+      const { task, allowed } = await verifyTaskAccess(id, user.id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       const comments = await storage.getTaskComments(id);
       res.json(comments);
     } catch (error) {
@@ -1042,6 +1330,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
+      }
+      
+      // CRITICAL: Verify task access
+      const { task, allowed } = await verifyTaskAccess(id, user.id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
       }
       
       const validatedData = insertCommentSchema.parse({
@@ -1061,6 +1360,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/tasks/:id/attachments", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      // CRITICAL: Verify task access
+      const { task, allowed } = await verifyTaskAccess(id, user.id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       const attachments = await storage.getTaskAttachments(id);
       res.json(attachments);
     } catch (error) {
@@ -1072,6 +1389,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/tasks/:id/activity", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      // CRITICAL: Verify task access
+      const { task, allowed } = await verifyTaskAccess(id, user.id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       const activity = await storage.getTaskActivity(id);
       res.json(activity);
     } catch (error) {
@@ -1088,6 +1423,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
+      }
+      
+      // CRITICAL: Verify task access
+      const { task, allowed } = await verifyTaskAccess(id, user.id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
       }
       
       const objectStorageService = new ObjectStorageService();
@@ -1188,6 +1534,275 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error searching for public object:", error);
       return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Board endpoints
+  app.get("/api/projects/:id/boards", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if user is a member of the project
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, id),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "You are not a member of this project" });
+      }
+
+      const projectBoards = await storage.getBoardsByProject(id);
+      res.json(projectBoards);
+    } catch (error) {
+      console.error("Error fetching boards:", error);
+      res.status(500).json({ message: "Failed to fetch boards" });
+    }
+  });
+
+  app.post("/api/boards", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const validatedData = insertBoardSchema.parse(req.body);
+
+      // Check if user is a member of the project
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, validatedData.projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "You are not a member of this project" });
+      }
+
+      const board = await storage.createBoard({
+        ...validatedData,
+        createdById: user.id,
+      });
+
+      // Create default columns for the new board
+      await createDefaultProjectColumns(board.id);
+
+      res.json(board);
+    } catch (error) {
+      console.error("Error creating board:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid board data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create board" });
+    }
+  });
+
+  app.patch("/api/boards/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // CRITICAL: Verify user has access to the board
+      const { board, allowed } = await verifyBoardAccess(id, user.id);
+      
+      if (!board) {
+        return res.status(404).json({ message: "Board not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updateData = insertBoardSchema.partial().parse(req.body);
+      const updatedBoard = await storage.updateBoard(id, updateData);
+
+      if (!updatedBoard) {
+        return res.status(404).json({ message: "Board not found" });
+      }
+
+      res.json(updatedBoard);
+    } catch (error) {
+      console.error("Error updating board:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid board data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update board" });
+    }
+  });
+
+  app.get("/api/boards/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // CRITICAL: Verify user has access to the board
+      const { board, allowed } = await verifyBoardAccess(id, user.id);
+      
+      if (!board) {
+        return res.status(404).json({ message: "Board not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(board);
+    } catch (error) {
+      console.error("Error fetching board:", error);
+      res.status(500).json({ message: "Failed to fetch board" });
+    }
+  });
+
+  app.get("/api/boards/:id/columns", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id: boardId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // CRITICAL: Verify user has access to the board
+      const { board, allowed } = await verifyBoardAccess(boardId, user.id);
+      
+      if (!board) {
+        return res.status(404).json({ message: "Board not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Get columns for this board
+      const columns = await db
+        .select()
+        .from(projectColumns)
+        .where(eq(projectColumns.boardId, boardId))
+        .orderBy(projectColumns.order);
+
+      res.json(columns);
+    } catch (error) {
+      console.error("Error fetching board columns:", error);
+      res.status(500).json({ message: "Failed to fetch board columns" });
+    }
+  });
+
+  app.get("/api/boards/:id/tasks", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // CRITICAL: Verify user has access to the board
+      const { board, allowed } = await verifyBoardAccess(id, user.id);
+      
+      if (!board) {
+        return res.status(404).json({ message: "Board not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Get tasks for this board
+      const tasks = await storage.getTasksByBoard(id);
+      res.json(tasks);
+    } catch (error) {
+      console.error("Error fetching board tasks:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/boards/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // CRITICAL: Verify user has access to the board
+      const { board, allowed } = await verifyBoardAccess(id, user.id);
+      
+      if (!board) {
+        return res.status(404).json({ message: "Board not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Additional check: User must be admin of the project to delete
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, board.projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== 'admin') {
+        return res.status(403).json({ message: "Only project admins can delete boards" });
+      }
+
+      const success = await storage.deleteBoard(id);
+      if (!success) {
+        return res.status(404).json({ message: "Board not found" });
+      }
+
+      res.json({ message: "Board deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting board:", error);
+      res.status(500).json({ message: "Failed to delete board" });
+    }
+  });
+
+  // Analytics endpoint
+  app.get("/api/analytics/overview", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const analytics = await storage.getAnalyticsOverview(user.id);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching analytics:", error);
+      res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
 
