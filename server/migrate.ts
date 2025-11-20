@@ -98,14 +98,20 @@ class DatabaseMigrator {
         const boardsExist = await this.checkTableExists('boards');
         if (!boardsExist) return false;
         
+        // Verificar que TODOS los proyectos tienen al menos un board
         const result = await this.pool.query(`
-          SELECT COUNT(*) as count FROM boards;
+          SELECT COUNT(*) as count 
+          FROM projects p
+          WHERE NOT EXISTS (
+            SELECT 1 FROM boards b WHERE b.project_id = p.id
+          );
         `);
-        return parseInt(result.rows[0].count) > 0;
+        // Si el count es 0, significa que todos los proyectos tienen boards
+        return parseInt(result.rows[0].count) === 0;
       },
       execute: async () => {
         console.log('  → Creando boards por defecto...');
-        await this.pool.query(`
+        const insertResult = await this.pool.query(`
           INSERT INTO boards (id, project_id, name, description, created_by_id, created_at)
           SELECT 
             gen_random_uuid(),
@@ -119,8 +125,8 @@ class DatabaseMigrator {
             SELECT 1 FROM boards b WHERE b.project_id = p.id
           );
         `);
-        const result = await this.pool.query(`SELECT COUNT(*) as count FROM boards`);
-        console.log(`  ✓ ${result.rows[0].count} boards creados`);
+        const rowCount = insertResult.rowCount || 0;
+        console.log(`  ✓ ${rowCount} boards creados`);
       }
     };
   }
@@ -130,30 +136,14 @@ class DatabaseMigrator {
       name: 'Migrar project_columns.board_id → project_id',
       check: async () => {
         const hasProjectId = await this.checkColumnExists('project_columns', 'project_id');
-        return hasProjectId;
+        const hasBoardId = await this.checkColumnExists('project_columns', 'board_id');
+        // Ya está migrado si tiene project_id y NO tiene board_id
+        return hasProjectId && !hasBoardId;
       },
       execute: async () => {
         console.log('  → Migrando project_columns...');
         
-        // 1. Renombrar columna
-        const hasBoardId = await this.checkColumnExists('project_columns', 'board_id');
-        if (hasBoardId) {
-          console.log('    • Renombrando board_id → project_id');
-          await this.pool.query(`
-            ALTER TABLE project_columns RENAME COLUMN board_id TO project_id;
-          `);
-        }
-
-        // 2. Actualizar valores (convertir board_id a project_id)
-        console.log('    • Actualizando valores de project_id');
-        await this.pool.query(`
-          UPDATE project_columns pc
-          SET project_id = b.project_id
-          FROM boards b
-          WHERE pc.project_id = b.id;
-        `);
-
-        // 3. Eliminar constraint antiguo
+        // 1. Eliminar constraint antiguo PRIMERO (antes de renombrar)
         const hasOldConstraint = await this.checkConstraintExists('project_columns', 'project_columns_board_id_boards_id_fk');
         if (hasOldConstraint) {
           console.log('    • Eliminando constraint antiguo');
@@ -162,6 +152,24 @@ class DatabaseMigrator {
             DROP CONSTRAINT project_columns_board_id_boards_id_fk;
           `);
         }
+        
+        // 2. Renombrar columna
+        const hasBoardId = await this.checkColumnExists('project_columns', 'board_id');
+        if (hasBoardId) {
+          console.log('    • Renombrando board_id → project_id');
+          await this.pool.query(`
+            ALTER TABLE project_columns RENAME COLUMN board_id TO project_id;
+          `);
+        }
+
+        // 3. Actualizar valores (convertir board_id a project_id)
+        console.log('    • Actualizando valores de project_id');
+        await this.pool.query(`
+          UPDATE project_columns pc
+          SET project_id = b.project_id
+          FROM boards b
+          WHERE pc.project_id = b.id;
+        `);
 
         // 4. Agregar nuevo constraint
         const hasNewConstraint = await this.checkConstraintExists('project_columns', 'project_columns_project_id_projects_id_fk');
