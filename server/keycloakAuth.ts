@@ -7,6 +7,9 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage.js";
+import { db } from "./db.js";
+import { organizations, organizationMembers, projects, projectMembers } from "../shared/schema.js";
+import { eq, and } from "drizzle-orm";
 
 const getKeycloakConfig = memoize(
   async () => {
@@ -81,6 +84,83 @@ async function upsertUser(claims: any) {
     });
     
     console.log("[upsertUser] User upserted successfully:", result.email);
+
+    // Check if user is member of any organization
+    const [membership] = await db
+      .select()
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, result.id))
+      .limit(1);
+
+    if (!membership) {
+      console.log("[upsertUser] User not in any organization, adding to default...");
+      
+      // Get or create default organization
+      const DEFAULT_ORG_NAME = "Organización Principal";
+      let [defaultOrg] = await db
+        .select()
+        .from(organizations)
+        .where(eq(organizations.name, DEFAULT_ORG_NAME))
+        .limit(1);
+
+      if (!defaultOrg) {
+        // Create default organization if it doesn't exist
+        [defaultOrg] = await db
+          .insert(organizations)
+          .values({
+            name: DEFAULT_ORG_NAME,
+            description: "Organización por defecto",
+            ownerId: result.id,
+          })
+          .returning();
+        
+        console.log("[upsertUser] Created default organization:", defaultOrg.id);
+      }
+
+      // Add user to organization
+      await db.insert(organizationMembers).values({
+        organizationId: defaultOrg.id,
+        userId: result.id,
+        role: 'member',
+      });
+
+      console.log("[upsertUser] Added user to organization:", defaultOrg.id);
+
+      // Get or create default project
+      const DEFAULT_PROJECT_NAME = "Proyecto General";
+      let [defaultProject] = await db
+        .select()
+        .from(projects)
+        .where(and(
+          eq(projects.name, DEFAULT_PROJECT_NAME),
+          eq(projects.organizationId, defaultOrg.id)
+        ))
+        .limit(1);
+
+      if (!defaultProject) {
+        // Create default project if it doesn't exist
+        [defaultProject] = await db
+          .insert(projects)
+          .values({
+            name: DEFAULT_PROJECT_NAME,
+            description: "Proyecto por defecto",
+            organizationId: defaultOrg.id,
+            createdById: result.id,
+          })
+          .returning();
+        
+        console.log("[upsertUser] Created default project:", defaultProject.id);
+      }
+
+      // Add user to project
+      await db.insert(projectMembers).values({
+        projectId: defaultProject.id,
+        userId: result.id,
+        role: 'member',
+      });
+
+      console.log("[upsertUser] Added user to project:", defaultProject.id);
+    }
   } catch (error) {
     console.error("[upsertUser] Failed to upsert user:", error);
     throw error;
