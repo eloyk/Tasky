@@ -202,7 +202,7 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
           <ScrollArea className="flex-1 px-6">
             <div className="space-y-6 pb-6">
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority]}`}>
+                <Badge className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority as keyof typeof priorityColors]}`}>
                   {task.priority === "low" ? "Baja" : task.priority === "medium" ? "Media" : "Alta"}
                 </Badge>
                 {task.dueDate && (
@@ -216,9 +216,10 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
               {task.description && (
                 <div>
                   <h4 className="text-sm font-medium mb-2">Descripción</h4>
-                  <p className="text-sm text-muted-foreground leading-normal whitespace-pre-wrap">
-                    {task.description}
-                  </p>
+                  <div 
+                    className="text-sm text-muted-foreground leading-normal prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: task.description }}
+                  />
                 </div>
               )}
 
@@ -239,7 +240,7 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
                       <Paperclip className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       <span className="flex-1 truncate">{attachment.fileName}</span>
                       <span className="text-xs text-muted-foreground">
-                        {attachment.fileSize ? `${Math.round(parseInt(attachment.fileSize) / 1024)} KB` : ""}
+                        {attachment.fileSize ? `${Math.round(Number(attachment.fileSize) / 1024)} KB` : ""}
                       </span>
                     </div>
                   ))}

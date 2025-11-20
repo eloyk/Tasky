@@ -29,6 +29,12 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
 
   const isOverdue = task.dueDate && isPast(new Date(task.dueDate));
 
+  const stripHtml = (html: string): string => {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -40,7 +46,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
       <div className="flex items-start justify-between gap-2 mb-3">
         <h4 className="text-base font-medium leading-tight flex-1">{task.title}</h4>
         <div className="flex items-center gap-2">
-          <Badge className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority]}`}>
+          <Badge className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority as keyof typeof priorityColors]}`}>
             {task.priority === "low" ? "Baja" : task.priority === "medium" ? "Media" : "Alta"}
           </Badge>
           <button
@@ -58,7 +64,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
 
       {task.description && (
         <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-          {task.description}
+          {stripHtml(task.description)}
         </p>
       )}
 
