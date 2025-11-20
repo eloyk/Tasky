@@ -271,18 +271,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAnalyticsOverview(userId: string): Promise<AnalyticsOverview> {
-    console.log('[Analytics] Starting analytics overview for userId:', userId);
-    
     // Get organizations where user is a member
     const userOrgs = await db
       .select()
       .from(organizationMembers)
       .where(eq(organizationMembers.userId, userId));
     
-    console.log('[Analytics] User organizations found:', userOrgs.length, 'orgs:', userOrgs.map(o => o.organizationId));
-    
     if (userOrgs.length === 0) {
-      console.log('[Analytics] No organizations found, returning empty analytics');
       return {
         totalTasks: 0,
         overdueTasks: 0,
@@ -301,12 +296,9 @@ export class DatabaseStorage implements IStorage {
       .from(projects)
       .where(inArray(projects.organizationId, orgIds));
     
-    console.log('[Analytics] Projects found:', userProjects.length, 'projects:', userProjects.map(p => p.id));
-    
     const projectIds = userProjects.map(p => p.id);
     
     if (projectIds.length === 0) {
-      console.log('[Analytics] No projects found, returning empty analytics');
       return {
         totalTasks: 0,
         overdueTasks: 0,
@@ -325,7 +317,6 @@ export class DatabaseStorage implements IStorage {
       .where(inArray(tasks.projectId, projectIds));
 
     const totalTasks = userTasks.length;
-    console.log('[Analytics] Total tasks found:', totalTasks);
 
     const tasksByStatusResult = await db
       .select({
@@ -343,7 +334,7 @@ export class DatabaseStorage implements IStorage {
       const columns = await db
         .select()
         .from(projectColumns)
-        .where(sql`${projectColumns.id} = ANY(${uniqueColumnIds})`);
+        .where(inArray(projectColumns.id, uniqueColumnIds));
       
       columns.forEach(col => columnsMap.set(col.id, col.name));
     }
@@ -419,29 +410,35 @@ export class DatabaseStorage implements IStorage {
 
     const upcomingDueTasks = upcomingDueTasksResult[0]?.count || 0;
 
-    const recentActivity = await db
-      .select({
-        id: activityLog.id,
-        taskId: activityLog.taskId,
-        userId: activityLog.userId,
-        actionType: activityLog.actionType,
-        fieldName: activityLog.fieldName,
-        oldValue: activityLog.oldValue,
-        newValue: activityLog.newValue,
-        createdAt: activityLog.createdAt,
-        user: {
-          id: users.id,
-          email: users.email,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          profileImageUrl: users.profileImageUrl,
-        }
-      })
-      .from(activityLog)
-      .leftJoin(users, eq(activityLog.userId, users.id))
-      .where(eq(activityLog.userId, userId))
-      .orderBy(desc(activityLog.createdAt))
-      .limit(10);
+    // Get recent activity from tasks in user's projects
+    const taskIds = userTasks.map(t => t.id);
+    let recentActivity: any[] = [];
+    
+    if (taskIds.length > 0) {
+      recentActivity = await db
+        .select({
+          id: activityLog.id,
+          taskId: activityLog.taskId,
+          userId: activityLog.userId,
+          actionType: activityLog.actionType,
+          fieldName: activityLog.fieldName,
+          oldValue: activityLog.oldValue,
+          newValue: activityLog.newValue,
+          createdAt: activityLog.createdAt,
+          user: {
+            id: users.id,
+            email: users.email,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            profileImageUrl: users.profileImageUrl,
+          }
+        })
+        .from(activityLog)
+        .leftJoin(users, eq(activityLog.userId, users.id))
+        .where(inArray(activityLog.taskId, taskIds))
+        .orderBy(desc(activityLog.createdAt))
+        .limit(10);
+    }
 
     return {
       totalTasks,
