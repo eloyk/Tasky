@@ -722,12 +722,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Not a member of this organization" });
       }
 
-      const validatedData = insertProjectSchema.parse({
-        ...req.body,
-        createdById: user.id,
-      });
+      const validatedData = insertProjectSchema.parse(req.body);
 
-      const [project] = await db.insert(projects).values(validatedData).returning();
+      const [project] = await db.insert(projects).values({
+        ...validatedData,
+        createdById: user.id,
+      }).returning();
 
       // Add creator as admin member
       await db.insert(projectMembers).values({

@@ -94,6 +94,7 @@ export const projects = pgTable("projects", {
 
 export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
+  createdById: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -139,6 +140,7 @@ export const boards = pgTable("boards", {
 
 export const insertBoardSchema = createInsertSchema(boards).omit({
   id: true,
+  createdById: true,
   createdAt: true,
   updatedAt: true,
 });

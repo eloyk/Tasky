@@ -55,7 +55,7 @@ export interface IStorage {
   getTaskActivity(taskId: string): Promise<ActivityLog[]>;
   createActivityLog(activity: InsertActivityLog): Promise<ActivityLog>;
 
-  createBoard(data: InsertBoard): Promise<Board>;
+  createBoard(data: InsertBoard & { createdById: string }): Promise<Board>;
   getBoard(id: string): Promise<Board | undefined>;
   getBoardsByProject(projectId: string): Promise<Board[]>;
   updateBoard(id: string, data: Partial<InsertBoard>): Promise<Board | undefined>;
@@ -235,7 +235,7 @@ export class DatabaseStorage implements IStorage {
     return activity;
   }
 
-  async createBoard(boardData: InsertBoard): Promise<Board> {
+  async createBoard(boardData: InsertBoard & { createdById: string }): Promise<Board> {
     const [board] = await db
       .insert(boards)
       .values(boardData)
