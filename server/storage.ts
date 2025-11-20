@@ -123,11 +123,11 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(tasks.createdAt));
   }
 
-  async getTasksByBoard(boardId: string): Promise<Task[]> {
+  async getTasksByBoard(projectId: string): Promise<Task[]> {
     const columns = await db
       .select()
       .from(projectColumns)
-      .where(eq(projectColumns.boardId, boardId));
+      .where(eq(projectColumns.projectId, projectId));
     
     const columnIds = columns.map(c => c.id);
     
