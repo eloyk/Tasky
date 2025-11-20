@@ -7,9 +7,23 @@ import {
   ObjectNotFoundError,
 } from "./objectStorage.js";
 import { ObjectPermission, getObjectAclPolicy, setObjectAclPolicy } from "./objectAcl.js";
-import { insertTaskSchema, insertCommentSchema, insertAttachmentSchema, users } from "../shared/schema.js";
+import { 
+  insertTaskSchema, 
+  insertCommentSchema, 
+  insertAttachmentSchema, 
+  insertOrganizationSchema,
+  insertProjectSchema,
+  insertOrganizationMemberSchema,
+  insertProjectMemberSchema,
+  users,
+  organizations,
+  projects,
+  organizationMembers,
+  projectMembers,
+  OrganizationRole
+} from "../shared/schema.js";
 import { db } from "./db.js";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
@@ -141,6 +155,356 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting task:", error);
       res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+
+  // Organization routes
+  app.get("/api/organizations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Get organizations where user is a member
+      const userOrgs = await db
+        .select({
+          id: organizations.id,
+          name: organizations.name,
+          description: organizations.description,
+          ownerId: organizations.ownerId,
+          createdAt: organizations.createdAt,
+          updatedAt: organizations.updatedAt,
+          role: organizationMembers.role,
+        })
+        .from(organizationMembers)
+        .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))
+        .where(eq(organizationMembers.userId, user.id));
+
+      res.json(userOrgs);
+    } catch (error) {
+      console.error("Error fetching organizations:", error);
+      res.status(500).json({ message: "Failed to fetch organizations" });
+    }
+  });
+
+  app.post("/api/organizations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const validatedData = insertOrganizationSchema.parse({
+        ...req.body,
+        ownerId: user.id,
+      });
+
+      const [organization] = await db.insert(organizations).values(validatedData).returning();
+
+      // Add owner as member with owner role
+      await db.insert(organizationMembers).values({
+        organizationId: organization.id,
+        userId: user.id,
+        role: OrganizationRole.OWNER,
+      });
+
+      res.json(organization);
+    } catch (error) {
+      console.error("Error creating organization:", error);
+      res.status(400).json({ message: "Failed to create organization" });
+    }
+  });
+
+  app.get("/api/organizations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if user is a member
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.organizationId, id),
+          eq(organizationMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this organization" });
+      }
+
+      const [organization] = await db.select().from(organizations).where(eq(organizations.id, id));
+
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      res.json(organization);
+    } catch (error) {
+      console.error("Error fetching organization:", error);
+      res.status(500).json({ message: "Failed to fetch organization" });
+    }
+  });
+
+  app.get("/api/organizations/:id/projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if user is a member of the organization
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.organizationId, id),
+          eq(organizationMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this organization" });
+      }
+
+      const orgProjects = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.organizationId, id));
+
+      res.json(orgProjects);
+    } catch (error) {
+      console.error("Error fetching projects:", error);
+      res.status(500).json({ message: "Failed to fetch projects" });
+    }
+  });
+
+  app.post("/api/organizations/:id/members", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { userEmail: memberEmail, role } = req.body;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if requester is admin or owner
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.organizationId, id),
+          eq(organizationMembers.userId, user.id)
+        ));
+
+      if (!membership || (membership.role !== OrganizationRole.OWNER && membership.role !== OrganizationRole.ADMIN)) {
+        return res.status(403).json({ message: "Not authorized to add members" });
+      }
+
+      // Find member by email
+      const [memberUser] = await db.select().from(users).where(eq(users.email, memberEmail));
+      
+      if (!memberUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const validatedData = insertOrganizationMemberSchema.parse({
+        organizationId: id,
+        userId: memberUser.id,
+        role: role || OrganizationRole.MEMBER,
+      });
+
+      const [member] = await db.insert(organizationMembers).values(validatedData).returning();
+
+      res.json(member);
+    } catch (error) {
+      console.error("Error adding organization member:", error);
+      res.status(400).json({ message: "Failed to add member" });
+    }
+  });
+
+  // Project routes
+  app.post("/api/projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if user is member of organization
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.organizationId, req.body.organizationId),
+          eq(organizationMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this organization" });
+      }
+
+      const validatedData = insertProjectSchema.parse({
+        ...req.body,
+        createdById: user.id,
+      });
+
+      const [project] = await db.insert(projects).values(validatedData).returning();
+
+      // Add creator as admin member
+      await db.insert(projectMembers).values({
+        projectId: project.id,
+        userId: user.id,
+        role: 'admin',
+      });
+
+      res.json(project);
+    } catch (error) {
+      console.error("Error creating project:", error);
+      res.status(400).json({ message: "Failed to create project" });
+    }
+  });
+
+  app.get("/api/projects/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if user is a member
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, id),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this project" });
+      }
+
+      const [project] = await db.select().from(projects).where(eq(projects.id, id));
+
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      res.json(project);
+    } catch (error) {
+      console.error("Error fetching project:", error);
+      res.status(500).json({ message: "Failed to fetch project" });
+    }
+  });
+
+  app.get("/api/projects/:id/members", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if user is a member
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, id),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this project" });
+      }
+
+      const members = await db
+        .select({
+          id: projectMembers.id,
+          userId: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          profileImageUrl: users.profileImageUrl,
+          role: projectMembers.role,
+          createdAt: projectMembers.createdAt,
+        })
+        .from(projectMembers)
+        .innerJoin(users, eq(projectMembers.userId, users.id))
+        .where(eq(projectMembers.projectId, id));
+
+      res.json(members);
+    } catch (error) {
+      console.error("Error fetching project members:", error);
+      res.status(500).json({ message: "Failed to fetch project members" });
+    }
+  });
+
+  app.post("/api/projects/:id/members", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { userEmail: memberEmail, role } = req.body;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if requester is admin
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, id),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== 'admin') {
+        return res.status(403).json({ message: "Not authorized to add members" });
+      }
+
+      // Find member by email
+      const [memberUser] = await db.select().from(users).where(eq(users.email, memberEmail));
+      
+      if (!memberUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const validatedData = insertProjectMemberSchema.parse({
+        projectId: id,
+        userId: memberUser.id,
+        role: role || 'member',
+      });
+
+      const [member] = await db.insert(projectMembers).values(validatedData).returning();
+
+      res.json(member);
+    } catch (error) {
+      console.error("Error adding project member:", error);
+      res.status(400).json({ message: "Failed to add member" });
     }
   });
 
