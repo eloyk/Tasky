@@ -267,34 +267,46 @@ class DatabaseMigrator {
         if (hasStatus) {
           console.log('    • Mapeando valores de status a column_id');
           
-          // Primero, verificar si hay proyectos sin columnas y crearlas
-          const projectsWithoutColumns = await this.pool.query(`
+          // Normalizar columnas para todos los proyectos con tareas
+          // Asegurar que todos tengan las 3 columnas estándar (orders 0, 1, 2)
+          const projectsWithTasks = await this.pool.query(`
             SELECT DISTINCT p.id, p.created_by_id
             FROM projects p
-            WHERE NOT EXISTS (
-              SELECT 1 FROM project_columns pc WHERE pc.project_id = p.id
-            )
-            AND EXISTS (
+            WHERE EXISTS (
               SELECT 1 FROM tasks t WHERE t.project_id = p.id
             )
           `);
           
-          if (projectsWithoutColumns.rows.length > 0) {
-            console.log(`    • Creando columnas por defecto para ${projectsWithoutColumns.rows.length} proyectos`);
-            for (const project of projectsWithoutColumns.rows) {
-              // Usar el created_by_id del proyecto o el primer usuario válido
-              const createdById = project.created_by_id;
-              if (!createdById) {
-                throw new Error(`Proyecto ${project.id} no tiene created_by_id válido`);
-              }
-              
-              await this.pool.query(`
-                INSERT INTO project_columns (id, project_id, name, "order", created_at, updated_at)
-                VALUES
-                  (gen_random_uuid(), $1, 'Pendiente', 0, NOW(), NOW()),
-                  (gen_random_uuid(), $1, 'En Progreso', 1, NOW(), NOW()),
-                  (gen_random_uuid(), $1, 'Completada', 2, NOW(), NOW())
+          if (projectsWithTasks.rows.length > 0) {
+            console.log(`    • Normalizando columnas para ${projectsWithTasks.rows.length} proyectos con tareas`);
+            
+            for (const project of projectsWithTasks.rows) {
+              // Verificar qué columnas ya existen para este proyecto
+              const existingColumns = await this.pool.query(`
+                SELECT "order" FROM project_columns WHERE project_id = $1
               `, [project.id]);
+              
+              const existingOrders = new Set(existingColumns.rows.map((r: any) => r.order));
+              
+              // Definir las 3 columnas estándar
+              const standardColumns = [
+                { order: 0, name: 'Pendiente' },
+                { order: 1, name: 'En Progreso' },
+                { order: 2, name: 'Completada' }
+              ];
+              
+              // Crear las columnas faltantes
+              const missingColumns = standardColumns.filter(col => !existingOrders.has(col.order));
+              
+              if (missingColumns.length > 0) {
+                console.log(`      - Proyecto ${project.id}: Creando ${missingColumns.length} columnas faltantes`);
+                for (const col of missingColumns) {
+                  await this.pool.query(`
+                    INSERT INTO project_columns (id, project_id, name, "order", created_at)
+                    VALUES (gen_random_uuid(), $1, $2, $3, NOW())
+                  `, [project.id, col.name, col.order]);
+                }
+              }
             }
           }
           
