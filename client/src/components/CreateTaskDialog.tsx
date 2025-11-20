@@ -6,6 +6,7 @@ import { insertTaskSchema } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -39,10 +40,11 @@ type FormValues = z.infer<typeof formSchema>;
 interface CreateTaskDialogProps {
   onSubmit: (data: FormValues) => void;
   isPending: boolean;
+  userId?: string;
   testIdPrefix?: string;
 }
 
-export function CreateTaskDialog({ onSubmit, isPending, testIdPrefix = "" }: CreateTaskDialogProps) {
+export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefix = "" }: CreateTaskDialogProps) {
   const [open, setOpen] = useState(false);
 
   const form = useForm<FormValues>({
@@ -54,13 +56,26 @@ export function CreateTaskDialog({ onSubmit, isPending, testIdPrefix = "" }: Cre
       priority: "medium",
       dueDate: "",
       projectId: "e8f32812-a7ff-4c7a-9166-eba16ae083c7", // Proyecto General por defecto
-      createdById: "",
+      createdById: userId,
     },
   });
 
   const handleSubmit = (data: FormValues) => {
-    onSubmit(data);
-    form.reset();
+    // Asegurar que createdById esté establecido
+    const taskData = {
+      ...data,
+      createdById: userId || data.createdById,
+    };
+    onSubmit(taskData);
+    form.reset({
+      title: "",
+      description: "",
+      status: "pendiente",
+      priority: "medium",
+      dueDate: "",
+      projectId: "e8f32812-a7ff-4c7a-9166-eba16ae083c7",
+      createdById: userId,
+    });
     setOpen(false);
   };
 
@@ -75,6 +90,9 @@ export function CreateTaskDialog({ onSubmit, isPending, testIdPrefix = "" }: Cre
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Crear Nueva Tarea</DialogTitle>
+          <DialogDescription>
+            Completa los detalles de la tarea y asígnale prioridad.
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>

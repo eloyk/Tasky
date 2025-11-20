@@ -33,6 +33,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       extensions: [
         StarterKit.configure({
           heading: false,
+          link: false, // Excluir Link del StarterKit para evitar duplicados
         }),
         Placeholder.configure({
           placeholder,

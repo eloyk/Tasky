@@ -194,6 +194,7 @@ export default function Home() {
             <CreateTaskDialog
               onSubmit={(data) => createTaskMutation.mutate(data)}
               isPending={createTaskMutation.isPending}
+              userId={user?.id}
             />
             <ThemeToggle />
             <Button
@@ -229,6 +230,7 @@ export default function Home() {
                 <CreateTaskDialog
                   onSubmit={(data) => createTaskMutation.mutate(data)}
                   isPending={createTaskMutation.isPending}
+                  userId={user?.id}
                   testIdPrefix="empty-state"
                 />
               </div>
