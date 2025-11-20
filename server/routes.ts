@@ -114,10 +114,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/tasks/:id/status", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/tasks/:id/column", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const { status } = req.body;
+      const { columnId } = req.body;
       const userEmail = req.user.claims.email;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
@@ -125,34 +125,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
       
-      if (!status) {
-        return res.status(400).json({ message: "Status is required" });
+      if (!columnId) {
+        return res.status(400).json({ message: "Column ID is required" });
       }
 
       // Get old task state before updating
       const oldTask = await storage.getTask(id);
-      const task = await storage.updateTaskStatus(id, status);
+      const task = await storage.updateTaskColumn(id, columnId);
       
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
 
-      // Log status change
-      if (oldTask && oldTask.status !== status) {
+      // Log column change
+      if (oldTask && oldTask.columnId !== columnId) {
         await storage.createActivityLog({
           taskId: id,
           userId: user.id,
-          actionType: "status_change",
-          fieldName: "status",
-          oldValue: oldTask.status,
-          newValue: status,
+          actionType: "column_change",
+          fieldName: "column",
+          oldValue: oldTask.columnId,
+          newValue: columnId,
         });
       }
 
       res.json(task);
     } catch (error) {
-      console.error("Error updating task status:", error);
-      res.status(500).json({ message: "Failed to update task status" });
+      console.error("Error updating task column:", error);
+      res.status(500).json({ message: "Failed to update task column" });
     }
   });
 

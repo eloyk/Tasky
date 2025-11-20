@@ -60,7 +60,7 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
     defaultValues: {
       title: "",
       description: "",
-      status: "pendiente",
+      columnId: "", // Se establecerá cuando se carguen las columnas del proyecto
       priority: "medium",
       dueDate: "",
       projectId: defaultProjectId,
@@ -72,6 +72,8 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
   useEffect(() => {
     if (defaultProjectId && !form.getValues("projectId")) {
       form.setValue("projectId", defaultProjectId);
+      // TODO: Cargar columnas del proyecto y establecer la primera como columnId por defecto
+      form.setValue("columnId", "temp-column-id"); // Temporal hasta que implementemos la carga de columnas
     }
   }, [defaultProjectId, form]);
 
@@ -85,7 +87,7 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
     form.reset({
       title: "",
       description: "",
-      status: "pendiente",
+      columnId: "temp-column-id", // Temporal
       priority: "medium",
       dueDate: "",
       projectId: defaultProjectId,

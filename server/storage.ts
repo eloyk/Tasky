@@ -26,7 +26,7 @@ export interface IStorage {
   getTasksByProject(projectId: string): Promise<Task[]>;
   getTask(id: string): Promise<Task | undefined>;
   createTask(task: InsertTask): Promise<Task>;
-  updateTaskStatus(id: string, status: string): Promise<Task | undefined>;
+  updateTaskColumn(id: string, columnId: string): Promise<Task | undefined>;
   deleteTask(id: string): Promise<void>;
 
   getTaskComments(taskId: string): Promise<Comment[]>;
@@ -111,10 +111,10 @@ export class DatabaseStorage implements IStorage {
     return task;
   }
 
-  async updateTaskStatus(id: string, status: string): Promise<Task | undefined> {
+  async updateTaskColumn(id: string, columnId: string): Promise<Task | undefined> {
     const [task] = await db
       .update(tasks)
-      .set({ status, updatedAt: new Date() })
+      .set({ columnId, updatedAt: new Date() })
       .where(eq(tasks.id, id))
       .returning();
     return task;

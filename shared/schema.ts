@@ -126,14 +126,25 @@ export const insertProjectMemberSchema = createInsertSchema(projectMembers).omit
 export type InsertProjectMember = z.infer<typeof insertProjectMemberSchema>;
 export type ProjectMember = typeof projectMembers.$inferSelect;
 
-// Task status enum: Pendiente, En Progreso, Completada
-export const TaskStatus = {
-  PENDIENTE: "pendiente",
-  EN_PROGRESO: "en_progreso",
-  COMPLETADA: "completada",
-} as const;
+// Project columns table - columnas personalizables para cada proyecto
+export const projectColumns = pgTable("project_columns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  order: integer("order").notNull(),
+  color: varchar("color", { length: 20 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueProjectOrder: index("unique_project_order").on(table.projectId, table.order),
+}));
 
-export type TaskStatusType = typeof TaskStatus[keyof typeof TaskStatus];
+export const insertProjectColumnSchema = createInsertSchema(projectColumns).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertProjectColumn = z.infer<typeof insertProjectColumnSchema>;
+export type ProjectColumn = typeof projectColumns.$inferSelect;
 
 // Task priority enum
 export const TaskPriority = {
@@ -149,7 +160,7 @@ export const tasks = pgTable("tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),
   description: text("description"),
-  status: varchar("status", { length: 20 }).notNull().default(TaskStatus.PENDIENTE),
+  columnId: varchar("column_id").notNull().references(() => projectColumns.id, { onDelete: "restrict" }),
   priority: varchar("priority", { length: 20 }).notNull().default(TaskPriority.MEDIUM),
   dueDate: timestamp("due_date"),
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
