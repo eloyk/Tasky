@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { LayoutGrid, Plus, Pencil, Trash2, ArrowLeft } from "lucide-react";
-import { useLocation, useParams } from "wouter";
+import { LayoutGrid, Plus, Pencil, Trash2, FolderKanban, Settings } from "lucide-react";
+import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Board, InsertBoard, Project } from "@shared/schema";
+import { useSelectedProject } from "@/contexts/SelectedProjectContext";
+import { ConfigureColumnsDialog } from "@/components/configure-columns-dialog";
+import type { Board, InsertBoard } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -32,26 +34,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Boards() {
-  const params = useParams();
-  const projectId = params.id as string;
+  const { selectedProject, selectedProjectId } = useSelectedProject();
   const [, setLocation] = useLocation();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [configureColumnsBoard, setConfigureColumnsBoard] = useState<Board | null>(null);
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
   const { toast } = useToast();
 
-  // Get project details
-  const { data: project, isLoading: projectLoading } = useQuery<Project>({
-    queryKey: ["/api/projects", projectId],
-    enabled: !!projectId,
-  });
-
-  // Get boards for this project
+  // Get boards for selected project
   const { data: boards = [], isLoading: boardsLoading } = useQuery<Board[]>({
-    queryKey: ["/api/projects", projectId, "boards"],
-    enabled: !!projectId,
+    queryKey: ["/api/projects", selectedProjectId, "boards"],
+    enabled: !!selectedProjectId,
   });
 
   const createMutation = useMutation({
@@ -59,7 +55,7 @@ export default function Boards() {
       return await apiRequest("POST", "/api/boards", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "boards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", selectedProjectId, "boards"] });
       setCreateDialogOpen(false);
       setFormData({ name: "", description: "" });
       toast({
@@ -81,7 +77,7 @@ export default function Boards() {
       return await apiRequest("PATCH", `/api/boards/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "boards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", selectedProjectId, "boards"] });
       setEditDialogOpen(false);
       setSelectedBoard(null);
       setFormData({ name: "", description: "" });
@@ -104,7 +100,7 @@ export default function Boards() {
       return await apiRequest("DELETE", `/api/boards/${id}`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "boards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", selectedProjectId, "boards"] });
       setDeleteDialogOpen(false);
       setSelectedBoard(null);
       toast({
@@ -122,10 +118,19 @@ export default function Boards() {
   });
 
   const handleCreate = () => {
-    if (!projectId) {
+    if (!selectedProjectId) {
       toast({
         title: "Error",
-        description: "No se pudo obtener el ID del proyecto.",
+        description: "Selecciona un proyecto primero.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.name.trim()) {
+      toast({
+        title: "Error",
+        description: "El nombre del tablero es requerido.",
         variant: "destructive",
       });
       return;
@@ -134,7 +139,7 @@ export default function Boards() {
     createMutation.mutate({
       name: formData.name,
       description: formData.description || null,
-      projectId: projectId,
+      projectId: selectedProjectId,
     });
   };
 
@@ -165,34 +170,15 @@ export default function Boards() {
     setDeleteDialogOpen(true);
   };
 
-  if (projectLoading) {
+  if (!selectedProjectId) {
     return (
       <div className="p-8">
-        <div className="space-y-4">
-          <Skeleton className="h-12 w-64" />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Skeleton className="h-48" />
-            <Skeleton className="h-48" />
-            <Skeleton className="h-48" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!project) {
-    return (
-      <div className="p-8">
-        <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg">
-          <LayoutGrid className="w-16 h-16 text-muted-foreground mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Proyecto no encontrado</h2>
-          <p className="text-muted-foreground mb-4">
-            El proyecto que buscas no existe o no tienes acceso a él.
+        <div className="flex flex-col items-center justify-center h-[60vh] border-2 border-dashed rounded-lg">
+          <FolderKanban className="w-16 h-16 text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Selecciona un Proyecto</h2>
+          <p className="text-muted-foreground mb-4 text-center max-w-md">
+            Selecciona un proyecto desde el dropdown en el header para ver sus tableros.
           </p>
-          <Button onClick={() => setLocation("/projects")} data-testid="button-back-to-projects">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Volver a Proyectos
-          </Button>
         </div>
       </div>
     );
@@ -200,19 +186,11 @@ export default function Boards() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center gap-4 mb-8">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setLocation("/projects")}
-          data-testid="button-back-to-projects"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
+      <div className="flex items-center justify-between gap-4 mb-8">
         <div className="flex-1">
           <h1 className="text-3xl font-bold">Tableros</h1>
           <p className="text-muted-foreground mt-2">
-            Gestiona los tableros de <strong>{project.name}</strong>
+            Gestiona los tableros de <strong>{selectedProject?.name}</strong>
           </p>
         </div>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -301,34 +279,46 @@ export default function Boards() {
                   <CardDescription>{board.description}</CardDescription>
                 )}
               </CardHeader>
-              <CardFooter className="flex justify-between gap-2">
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => setLocation(`/boards/${board.id}`)}
-                  data-testid={`button-open-${board.id}`}
-                >
-                  <LayoutGrid className="w-4 h-4 mr-1" />
-                  Abrir Tablero
-                </Button>
-                <div className="flex gap-2">
+              <CardFooter className="flex flex-col gap-2">
+                <div className="flex justify-between w-full gap-2">
                   <Button
-                    variant="outline"
+                    variant="default"
                     size="sm"
-                    onClick={() => openEditDialog(board)}
-                    data-testid={`button-edit-${board.id}`}
+                    onClick={() => setLocation(`/boards/${board.id}`)}
+                    data-testid={`button-open-${board.id}`}
                   >
-                    <Pencil className="w-4 h-4" />
+                    <LayoutGrid className="w-4 h-4 mr-1" />
+                    Abrir Tablero
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openDeleteDialog(board)}
-                    data-testid={`button-delete-${board.id}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditDialog(board)}
+                      data-testid={`button-edit-${board.id}`}
+                    >
+                      <Pencil className="w-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openDeleteDialog(board)}
+                      data-testid={`button-delete-${board.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setConfigureColumnsBoard(board)}
+                  data-testid={`button-configure-columns-${board.id}`}
+                >
+                  <Settings className="w-4 h-4 mr-1" />
+                  Configurar Columnas
+                </Button>
               </CardFooter>
             </Card>
           ))}
@@ -411,6 +401,15 @@ export default function Boards() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Configure Columns Dialog */}
+      {configureColumnsBoard && (
+        <ConfigureColumnsDialog
+          board={configureColumnsBoard}
+          open={!!configureColumnsBoard}
+          onOpenChange={(open) => !open && setConfigureColumnsBoard(null)}
+        />
+      )}
     </div>
   );
 }

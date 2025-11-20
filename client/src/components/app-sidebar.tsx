@@ -1,4 +1,4 @@
-import { FolderKanban, Home } from "lucide-react";
+import { Kanban, Home } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -19,9 +19,9 @@ const menuItems = [
     icon: Home,
   },
   {
-    title: "Proyectos",
-    url: "/projects",
-    icon: FolderKanban,
+    title: "Tableros",
+    url: "/boards",
+    icon: Kanban,
   },
 ];
 
@@ -33,7 +33,7 @@ export function AppSidebar() {
       <SidebarHeader className="border-b px-6 py-4">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-            <FolderKanban className="h-5 w-5 text-primary-foreground" />
+            <Kanban className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
             <h2 className="text-lg font-semibold">Tasky RD</h2>
