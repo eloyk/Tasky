@@ -15,8 +15,8 @@ pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
 
 Si usas Docker, **no necesitas hacer nada manualmente**. El contenedor ejecuta automáticamente:
 
-1. Script de migración inteligente (`server/migrate.ts`)
-2. Sincronización de schema (`drizzle-kit push`)
+1. Script de migración de datos (`server/migrate.ts`) - Migra datos existentes si es necesario
+2. Sincronización de schema (`drizzle-kit push --force`) - Crea/actualiza tablas
 3. Inicio de la aplicación
 
 ```bash

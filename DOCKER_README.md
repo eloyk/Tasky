@@ -48,18 +48,21 @@ La aplicación estará disponible en `http://localhost:5000`
 
 El script `docker-entrypoint.sh` ejecuta automáticamente en orden:
 
-1. **Script de migración inteligente** (`server/migrate.ts`):
-   - Detecta el estado actual de tu base de datos
-   - Crea la tabla `boards` si no existe
-   - Crea boards por defecto para cada proyecto
-   - Migra `project_columns.board_id` → `project_id` (si es necesario)
-   - Migra `tasks.status` → `tasks.column_id` (si es necesario)
-   - Actualiza constraints e índices
+1. **Script de migración de datos** (`server/migrate.ts`):
+   - Detecta automáticamente el estado de tu base de datos
+   - **Base de datos nueva**: Omite automáticamente los pasos de migración (las tablas aún no existen)
+   - **Base de datos antigua con datos**: Ejecuta las migraciones necesarias:
+     - Crea tabla `boards` si no existe
+     - Crea boards por defecto para cada proyecto
+     - Migra `project_columns.board_id` → `project_id`
+     - Migra `tasks.status` → `tasks.column_id`
+     - Actualiza constraints e índices
    - **Es idempotente**: Puedes reiniciar el contenedor sin problemas
 
 2. **Sincronización de schema** (`drizzle-kit push --force`):
-   - Sincroniza cualquier cambio adicional en el esquema
-   - Crea tablas faltantes como `sessions`
+   - Crea todas las tablas con el schema correcto (base de datos nueva)
+   - Sincroniza cambios adicionales en el esquema (base de datos existente)
+   - Crea tablas auxiliares como `sessions`
 
 3. **Inicia la aplicación**
 

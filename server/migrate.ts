@@ -70,7 +70,19 @@ class DatabaseMigrator {
     return {
       name: 'Crear tabla boards',
       check: async () => {
-        return await this.checkTableExists('boards');
+        const boardsExists = await this.checkTableExists('boards');
+        if (boardsExists) return true; // Ya existe
+        
+        // Verificar que las tablas prerequisito existen
+        const projectsExists = await this.checkTableExists('projects');
+        const usersExists = await this.checkTableExists('users');
+        
+        if (!projectsExists || !usersExists) {
+          console.log('  ℹ️  Tablas prerequisito (projects/users) no existen (base de datos nueva), omitiendo creación de boards');
+          return true; // Omitir este paso, drizzle creará todo
+        }
+        
+        return false; // Tablas prerequisito existen pero boards no, necesitamos crearla
       },
       execute: async () => {
         console.log('  → Creando tabla boards...');
@@ -96,7 +108,16 @@ class DatabaseMigrator {
       name: 'Crear boards por defecto para proyectos',
       check: async () => {
         const boardsExist = await this.checkTableExists('boards');
-        if (!boardsExist) return false;
+        if (!boardsExist) {
+          console.log('  ℹ️  Tabla boards no existe (se creará con drizzle), omitiendo creación de boards por defecto');
+          return true; // Omitir este paso
+        }
+        
+        const projectsExist = await this.checkTableExists('projects');
+        if (!projectsExist) {
+          console.log('  ℹ️  Tabla projects no existe (base de datos nueva), omitiendo creación de boards por defecto');
+          return true; // Omitir este paso
+        }
         
         // Verificar que TODOS los proyectos tienen al menos un board
         const result = await this.pool.query(`
@@ -135,6 +156,13 @@ class DatabaseMigrator {
     return {
       name: 'Migrar project_columns.board_id → project_id',
       check: async () => {
+        // Primero verificar si la tabla existe
+        const tableExists = await this.checkTableExists('project_columns');
+        if (!tableExists) {
+          console.log('  ℹ️  Tabla project_columns no existe (base de datos nueva), omitiendo migración');
+          return true; // Retornar true para omitir este paso
+        }
+        
         const hasProjectId = await this.checkColumnExists('project_columns', 'project_id');
         const hasBoardId = await this.checkColumnExists('project_columns', 'board_id');
         // Ya está migrado si tiene project_id y NO tiene board_id
@@ -206,6 +234,13 @@ class DatabaseMigrator {
     return {
       name: 'Migrar tasks.status → tasks.column_id',
       check: async () => {
+        // Primero verificar si la tabla existe
+        const tableExists = await this.checkTableExists('tasks');
+        if (!tableExists) {
+          console.log('  ℹ️  Tabla tasks no existe (base de datos nueva), omitiendo migración');
+          return true; // Retornar true para omitir este paso
+        }
+        
         const hasColumnId = await this.checkColumnExists('tasks', 'column_id');
         const hasStatus = await this.checkColumnExists('tasks', 'status');
         return hasColumnId && !hasStatus;

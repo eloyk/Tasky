@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-echo "🔄 Ejecutando script de migración automática..."
+echo "🔄 Ejecutando script de migración de datos..."
 npx tsx server/migrate.ts
 
 echo "📦 Sincronizando schema con Drizzle..."
