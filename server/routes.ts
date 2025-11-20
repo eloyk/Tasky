@@ -281,6 +281,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdById: user.id,
       });
       
+      console.log('[DEBUG] Tarea creada:', {
+        id: task.id,
+        title: task.title,
+        projectId: task.projectId,
+        columnId: task.columnId
+      });
+      
       // Log task creation
       await storage.createActivityLog({
         taskId: task.id,
@@ -1790,6 +1797,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get tasks for this board
       const tasks = await storage.getTasksByBoard(id);
+      console.log('[DEBUG] Tareas obtenidas para board:', {
+        boardId: id,
+        projectId: board.projectId,
+        count: tasks.length,
+        taskIds: tasks.map(t => t.id)
+      });
       res.json(tasks);
     } catch (error) {
       console.error("Error fetching board tasks:", error);
