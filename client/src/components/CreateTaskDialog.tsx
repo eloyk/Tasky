@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
-import { insertTaskSchema, type Project, type ProjectColumn } from "@shared/schema";
+import { insertTaskSchema, type InsertTask, type Project, type ProjectColumn } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Plus } from "lucide-react";
 
+// Form schema extendido para usar string en lugar de Date para dueDate
 const formSchema = insertTaskSchema.extend({
   dueDate: z.string().optional(),
 });
@@ -39,7 +40,7 @@ const formSchema = insertTaskSchema.extend({
 type FormValues = z.infer<typeof formSchema>;
 
 interface CreateTaskDialogProps {
-  onSubmit: (data: FormValues) => void;
+  onSubmit: (data: InsertTask) => void;
   isPending: boolean;
   userId?: string;
   testIdPrefix?: string;
@@ -131,9 +132,10 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
       return;
     }
 
-    // Asegurar que createdById esté establecido
-    const taskData = {
+    // Convertir dueDate de string a Date y asegurar que createdById esté establecido
+    const taskData: InsertTask = {
       ...data,
+      dueDate: data.dueDate ? new Date(data.dueDate) : null,
       createdById: userId || data.createdById,
     };
     onSubmit(taskData);

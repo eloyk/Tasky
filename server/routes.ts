@@ -15,16 +15,20 @@ import {
   insertProjectSchema,
   insertOrganizationMemberSchema,
   insertProjectMemberSchema,
+  insertProjectColumnSchema,
   users,
   organizations,
   projects,
+  tasks,
   organizationMembers,
   projectMembers,
   projectColumns,
-  OrganizationRole
+  OrganizationRole,
+  ProjectRole
 } from "../shared/schema.js";
 import { db } from "./db.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
+import { z } from "zod";
 import { createDefaultProjectColumns } from "./projectHelpers.js";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -366,6 +370,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/organizations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if requester is admin or owner
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.organizationId, id),
+          eq(organizationMembers.userId, user.id)
+        ));
+
+      if (!membership || (membership.role !== OrganizationRole.OWNER && membership.role !== OrganizationRole.ADMIN)) {
+        return res.status(403).json({ message: "Not authorized to update this organization" });
+      }
+
+      const { name, description } = req.body;
+      const [updated] = await db
+        .update(organizations)
+        .set({ name, description, updatedAt: new Date() })
+        .where(eq(organizations.id, id))
+        .returning();
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating organization:", error);
+      res.status(400).json({ message: "Failed to update organization" });
+    }
+  });
+
+  app.delete("/api/organizations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if requester is owner
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.organizationId, id),
+          eq(organizationMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== OrganizationRole.OWNER) {
+        return res.status(403).json({ message: "Only the owner can delete this organization" });
+      }
+
+      // Delete the organization (cascade will handle related records)
+      await db.delete(organizations).where(eq(organizations.id, id));
+
+      res.json({ message: "Organization deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting organization:", error);
+      res.status(400).json({ message: "Failed to delete organization" });
+    }
+  });
+
   // Project routes
   app.get("/api/projects", isAuthenticated, async (req: any, res) => {
     try {
@@ -517,6 +591,277 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/projects/:id/columns", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id: projectId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Verify project exists first
+      const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Check if user is a member and admin of the project
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this project" });
+      }
+
+      if (membership.role !== ProjectRole.ADMIN) {
+        return res.status(403).json({ message: "Only project admins can add columns" });
+      }
+
+      // Get max order to place new column at the end
+      const maxOrder = await db
+        .select({ maxOrder: sql<number>`COALESCE(MAX(${projectColumns.order}), -1)` })
+        .from(projectColumns)
+        .where(eq(projectColumns.projectId, projectId));
+
+      // Validate input with Zod schema using safeParse
+      const validation = insertProjectColumnSchema.safeParse({
+        name: req.body.name,
+        projectId,
+        order: (maxOrder[0]?.maxOrder ?? -1) + 1,
+      });
+
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid column data", 
+          errors: validation.error.errors 
+        });
+      }
+
+      const [newColumn] = await db.insert(projectColumns).values(validation.data).returning();
+
+      res.json(newColumn);
+    } catch (error) {
+      console.error("Error creating project column:", error);
+      res.status(500).json({ message: "Failed to create column" });
+    }
+  });
+
+  app.patch("/api/projects/:id/columns/:columnId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id: projectId, columnId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Verify column exists and belongs to project first
+      const [existingColumn] = await db
+        .select()
+        .from(projectColumns)
+        .where(and(
+          eq(projectColumns.id, columnId),
+          eq(projectColumns.projectId, projectId)
+        ));
+
+      if (!existingColumn) {
+        return res.status(404).json({ message: "Column not found" });
+      }
+
+      // Check if user is admin of the project
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this project" });
+      }
+
+      if (membership.role !== ProjectRole.ADMIN) {
+        return res.status(403).json({ message: "Only project admins can update columns" });
+      }
+
+      // Validate name using safeParse
+      const nameSchema = z.string().min(1, "Column name cannot be empty");
+      const validation = nameSchema.safeParse(req.body.name);
+
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid column name", 
+          errors: validation.error.errors 
+        });
+      }
+
+      const [updated] = await db
+        .update(projectColumns)
+        .set({ name: validation.data })
+        .where(and(
+          eq(projectColumns.id, columnId),
+          eq(projectColumns.projectId, projectId)
+        ))
+        .returning();
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating project column:", error);
+      res.status(500).json({ message: "Failed to update column" });
+    }
+  });
+
+  app.delete("/api/projects/:id/columns/:columnId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id: projectId, columnId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Verify column exists and belongs to project first
+      const [columnToDelete] = await db
+        .select()
+        .from(projectColumns)
+        .where(and(
+          eq(projectColumns.id, columnId),
+          eq(projectColumns.projectId, projectId)
+        ));
+
+      if (!columnToDelete) {
+        return res.status(404).json({ message: "Column not found" });
+      }
+
+      // Check if user is admin of the project
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this project" });
+      }
+
+      if (membership.role !== ProjectRole.ADMIN) {
+        return res.status(403).json({ message: "Only project admins can delete columns" });
+      }
+
+      // Check if column has tasks (prevent deletion if it does)
+      // Must filter by both columnId AND projectId to ensure we're checking the right column
+      const tasksInColumn = await db
+        .select()
+        .from(tasks)
+        .where(and(
+          eq(tasks.columnId, columnId),
+          eq(tasks.projectId, projectId)
+        ))
+        .limit(1);
+
+      if (tasksInColumn.length > 0) {
+        return res.status(400).json({ message: "Cannot delete column with existing tasks. Move or delete tasks first." });
+      }
+
+      await db
+        .delete(projectColumns)
+        .where(and(
+          eq(projectColumns.id, columnId),
+          eq(projectColumns.projectId, projectId)
+        ));
+
+      res.json({ message: "Column deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting project column:", error);
+      res.status(500).json({ message: "Failed to delete column" });
+    }
+  });
+
+  app.patch("/api/projects/:id/columns/reorder", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id: projectId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Verify project exists first
+      const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Check if user is admin of the project
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this project" });
+      }
+
+      if (membership.role !== ProjectRole.ADMIN) {
+        return res.status(403).json({ message: "Only project admins can reorder columns" });
+      }
+
+      // Validate columns array using safeParse
+      const columnsSchema = z.array(z.object({
+        id: z.string(),
+        order: z.number().int().min(0)
+      })).min(1, "At least one column is required");
+      
+      const validation = columnsSchema.safeParse(req.body.columns);
+      
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid column data", 
+          errors: validation.error.errors 
+        });
+      }
+
+      // Update order for each column
+      for (const column of validation.data) {
+        await db
+          .update(projectColumns)
+          .set({ order: column.order })
+          .where(and(
+            eq(projectColumns.id, column.id),
+            eq(projectColumns.projectId, projectId)
+          ));
+      }
+
+      // Return updated columns
+      const updatedColumns = await db
+        .select()
+        .from(projectColumns)
+        .where(eq(projectColumns.projectId, projectId))
+        .orderBy(projectColumns.order);
+
+      res.json(updatedColumns);
+    } catch (error) {
+      console.error("Error reordering project columns:", error);
+      res.status(500).json({ message: "Failed to reorder columns" });
+    }
+  });
+
   app.get("/api/projects/:id/members", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
@@ -605,6 +950,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error adding project member:", error);
       res.status(400).json({ message: "Failed to add member" });
+    }
+  });
+
+  app.patch("/api/projects/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if requester is admin
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, id),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== 'admin') {
+        return res.status(403).json({ message: "Not authorized to update this project" });
+      }
+
+      const { name, description } = req.body;
+      const [updated] = await db
+        .update(projects)
+        .set({ name, description, updatedAt: new Date() })
+        .where(eq(projects.id, id))
+        .returning();
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating project:", error);
+      res.status(400).json({ message: "Failed to update project" });
+    }
+  });
+
+  app.delete("/api/projects/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if requester is admin
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, id),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== 'admin') {
+        return res.status(403).json({ message: "Only admins can delete this project" });
+      }
+
+      // Delete the project (cascade will handle related records)
+      await db.delete(projects).where(eq(projects.id, id));
+
+      res.json({ message: "Project deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      res.status(400).json({ message: "Failed to delete project" });
     }
   });
 
