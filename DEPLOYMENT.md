@@ -1,33 +1,69 @@
 # Guía de Despliegue - Tasky RD
 
+## 🚨 MIGRACIÓN CRÍTICA: project_columns.board_id → project_id
+
+### Cambio de Arquitectura (Noviembre 2025)
+El schema se corrigió para que las **columnas pertenezcan a proyectos**, no a boards individuales. Esto permite que múltiples boards compartan las mismas columnas del proyecto.
+
+### ⚠️ IMPORTANTE: Backup Obligatorio
+**ANTES de ejecutar cualquier comando**, haz un backup completo de tu base de datos de producción:
+```bash
+pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
+```
+
 ## Sincronización de Base de Datos de Producción
 
-### Problema
-Si ves el error `relation "boards" does not exist` en producción, significa que el schema de tu base de datos no está sincronizado con el código.
+### Paso 1: Migración Manual de Columnas
 
-### Solución
+Si tu base de datos ya tiene datos en `project_columns`, **DEBES** ejecutar esta migración manual antes de usar `db:push`:
 
-#### Opción 1: Usar Drizzle Kit (Recomendado)
+```sql
+-- 1. Renombrar la columna
+ALTER TABLE project_columns 
+RENAME COLUMN board_id TO project_id;
 
-1. **Conecta a tu entorno de producción** (servidor, Docker container, etc.)
+-- 2. Actualizar los valores para que apunten al project_id correcto
+-- (Esto convierte los board_id antiguos a project_id correctos)
+UPDATE project_columns pc
+SET project_id = b.project_id
+FROM boards b
+WHERE pc.project_id = b.id;
 
-2. **Ejecuta el comando de sincronización:**
-   ```bash
-   npm run db:push --force
-   ```
+-- 3. Eliminar el foreign key constraint antiguo
+ALTER TABLE project_columns 
+DROP CONSTRAINT IF EXISTS project_columns_board_id_boards_id_fk;
 
-   Este comando:
-   - Lee el schema definido en `shared/schema.ts`
-   - Compara con tu base de datos de producción
-   - Crea las tablas faltantes (como `boards`)
-   - Actualiza las columnas según sea necesario
+-- 4. Agregar el nuevo foreign key constraint
+ALTER TABLE project_columns 
+ADD CONSTRAINT project_columns_project_id_projects_id_fk 
+FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE;
 
-3. **Verifica la sincronización:**
-   ```bash
-   npm run db:push
-   ```
-   
-   Si no hay cambios pendientes, verás: "No changes detected"
+-- 5. Actualizar índices
+DROP INDEX IF EXISTS unique_board_order;
+CREATE UNIQUE INDEX IF NOT EXISTS unique_project_order ON project_columns(project_id, "order");
+```
+
+### Paso 2: Sincronizar Schema con Drizzle
+
+Una vez completada la migración manual (o si es una instalación nueva), ejecuta:
+
+```bash
+npm run db:push --force
+```
+
+Este comando:
+- Lee el schema definido en `shared/schema.ts`
+- Compara con tu base de datos de producción
+- Crea las tablas faltantes
+- Actualiza las columnas según sea necesario
+
+### Paso 3: Verificar la sincronización
+
+```bash
+npm run db:push
+```
+
+Si no hay cambios pendientes, verás: "No changes detected"
 
 #### Opción 2: SQL Manual (Solo si Opción 1 falla)
 

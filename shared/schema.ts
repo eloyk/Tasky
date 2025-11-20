@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -157,7 +158,7 @@ export const projectColumns = pgTable("project_columns", {
   color: varchar("color", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
-  uniqueProjectOrder: index("unique_project_order").on(table.projectId, table.order),
+  uniqueProjectOrder: uniqueIndex("unique_project_order").on(table.projectId, table.order),
 }));
 
 export const insertProjectColumnSchema = createInsertSchema(projectColumns).omit({
