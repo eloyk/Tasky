@@ -339,13 +339,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Column not found" });
       }
 
-      // Get the board to verify it belongs to the same project as the task
-      const [targetBoard] = await db
-        .select()
-        .from(boards)
-        .where(eq(boards.id, targetColumn.boardId));
-
-      if (!targetBoard || targetBoard.projectId !== oldTask.projectId) {
+      // Verify column belongs to the same project as the task
+      if (targetColumn.projectId !== oldTask.projectId) {
         return res.status(400).json({ message: "Column does not belong to task's project" });
       }
 
@@ -788,22 +783,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Not a member of this project" });
       }
 
-      // Get all boards for this project
-      const projectBoards = await db
-        .select()
-        .from(boards)
-        .where(eq(boards.projectId, projectId));
-
-      if (projectBoards.length === 0) {
-        return res.json([]);
-      }
-
-      // Get columns from all boards ordered by order field
-      const boardIds = projectBoards.map(board => board.id);
+      // Get columns for this project ordered by order field
       const columns = await db
         .select()
         .from(projectColumns)
-        .where(sql`${projectColumns.boardId} = ANY(${boardIds})`)
+        .where(eq(projectColumns.projectId, projectId))
         .orderBy(projectColumns.order);
 
       res.json(columns);
@@ -846,27 +830,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Only project admins can add columns" });
       }
 
-      // Get the first board of the project (for backward compatibility)
-      const [firstBoard] = await db
-        .select()
-        .from(boards)
-        .where(eq(boards.projectId, projectId))
-        .limit(1);
-
-      if (!firstBoard) {
-        return res.status(404).json({ message: "No board found for this project" });
-      }
-
       // Get max order to place new column at the end
       const maxOrder = await db
         .select({ maxOrder: sql<number>`COALESCE(MAX(${projectColumns.order}), -1)` })
         .from(projectColumns)
-        .where(eq(projectColumns.boardId, firstBoard.id));
+        .where(eq(projectColumns.projectId, projectId));
 
       // Validate input with Zod schema using safeParse
       const validation = insertProjectColumnSchema.safeParse({
         name: req.body.name,
-        boardId: firstBoard.id,
+        projectId: projectId,
         order: (maxOrder[0]?.maxOrder ?? -1) + 1,
       });
 
@@ -906,16 +879,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Column not found" });
       }
 
-      // Get the board to verify it belongs to the project
-      const [board] = await db
-        .select()
-        .from(boards)
-        .where(and(
-          eq(boards.id, existingColumn.boardId),
-          eq(boards.projectId, projectId)
-        ));
-
-      if (!board) {
+      // Verify column belongs to the project
+      if (existingColumn.projectId !== projectId) {
         return res.status(404).json({ message: "Column does not belong to this project" });
       }
 
@@ -980,16 +945,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Column not found" });
       }
 
-      // Get the board to verify it belongs to the project
-      const [board] = await db
-        .select()
-        .from(boards)
-        .where(and(
-          eq(boards.id, columnToDelete.boardId),
-          eq(boards.projectId, projectId)
-        ));
-
-      if (!board) {
+      // Verify column belongs to the project
+      if (columnToDelete.projectId !== projectId) {
         return res.status(404).json({ message: "Column does not belong to this project" });
       }
 
@@ -1080,26 +1037,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Get all boards for this project
-      const projectBoards = await db
-        .select()
-        .from(boards)
-        .where(eq(boards.projectId, projectId));
-
-      if (projectBoards.length === 0) {
-        return res.status(404).json({ message: "No boards found for this project" });
-      }
-
-      const boardIds = projectBoards.map(board => board.id);
-
-      // Update order for each column (verify they belong to this project's boards)
+      // Update order for each column (verify they belong to this project)
       for (const column of validation.data) {
         await db
           .update(projectColumns)
           .set({ order: column.order })
           .where(and(
             eq(projectColumns.id, column.id),
-            sql`${projectColumns.boardId} = ANY(${boardIds})`
+            eq(projectColumns.projectId, projectId)
           ));
       }
 
@@ -1107,7 +1052,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedColumns = await db
         .select()
         .from(projectColumns)
-        .where(sql`${projectColumns.boardId} = ANY(${boardIds})`)
+        .where(eq(projectColumns.projectId, projectId))
         .orderBy(projectColumns.order);
 
       res.json(updatedColumns);
@@ -1824,11 +1769,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Get columns for this board
+      // Get columns for this board's project
       const columns = await db
         .select()
         .from(projectColumns)
-        .where(eq(projectColumns.boardId, boardId))
+        .where(eq(projectColumns.projectId, board.projectId))
         .orderBy(projectColumns.order);
 
       res.json(columns);
