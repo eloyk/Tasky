@@ -234,10 +234,17 @@ class DatabaseMigrator {
     return {
       name: 'Migrar tasks.status → tasks.column_id',
       check: async () => {
-        // Primero verificar si la tabla existe
-        const tableExists = await this.checkTableExists('tasks');
-        if (!tableExists) {
+        // Primero verificar si la tabla tasks existe
+        const tasksExists = await this.checkTableExists('tasks');
+        if (!tasksExists) {
           console.log('  ℹ️  Tabla tasks no existe (base de datos nueva), omitiendo migración');
+          return true; // Retornar true para omitir este paso
+        }
+        
+        // También verificar que project_columns existe (necesario para el mapeo)
+        const projectColumnsExists = await this.checkTableExists('project_columns');
+        if (!projectColumnsExists) {
+          console.log('  ℹ️  Tabla project_columns no existe (base de datos nueva), omitiendo migración de tasks');
           return true; // Retornar true para omitir este paso
         }
         
