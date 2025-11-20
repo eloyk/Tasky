@@ -22,7 +22,7 @@ import {
   type InsertBoard,
 } from "../shared/schema.js";
 import { db } from "./db.js";
-import { eq, desc, and, gte, lte, sql, count, inArray } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, count, inArray, isNotNull } from "drizzle-orm";
 
 export interface AnalyticsOverview {
   totalTasks: number;
@@ -365,6 +365,7 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           inArray(tasks.projectId, projectIds),
+          isNotNull(tasks.dueDate),
           lte(tasks.dueDate, now)
         )
       );
@@ -403,6 +404,7 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           inArray(tasks.projectId, projectIds),
+          isNotNull(tasks.dueDate),
           gte(tasks.dueDate, now),
           lte(tasks.dueDate, threeDaysFromNow)
         )
