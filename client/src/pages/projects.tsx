@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { FolderKanban, Plus, Pencil, Trash2, Settings } from "lucide-react";
 import { Link } from "wouter";
@@ -56,12 +56,22 @@ export default function Projects() {
     enabled: !!selectedOrgId,
   });
 
-  // Auto-select first organization
-  useState(() => {
-    if (organizations.length > 0 && !selectedOrgId) {
+  // Manejar auto-selección y limpieza de organización seleccionada
+  useEffect(() => {
+    // Si no hay organizaciones, limpiar selección
+    if (organizations.length === 0) {
+      if (selectedOrgId) {
+        setSelectedOrgId("");
+      }
+      return;
+    }
+
+    // Si la organización seleccionada ya no existe, seleccionar la primera
+    const currentOrgExists = organizations.some(org => org.id === selectedOrgId);
+    if (!currentOrgExists) {
       setSelectedOrgId(organizations[0].id);
     }
-  });
+  }, [organizations, selectedOrgId]);
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertProject) => {
