@@ -1,8 +1,11 @@
 #!/bin/sh
 set -e
 
-echo "Running database migrations..."
+echo "🔄 Ejecutando script de migración automática..."
+npx tsx server/migrate.ts
+
+echo "📦 Sincronizando schema con Drizzle..."
 npx drizzle-kit push --force
 
-echo "Starting application..."
+echo "🚀 Iniciando aplicación..."
 exec node dist/server/index.js

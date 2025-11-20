@@ -11,7 +11,32 @@ El schema se corrigió para que las **columnas pertenezcan a proyectos**, no a b
 pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
-## ✨ Migración Automática (Recomendado)
+## 🐳 Despliegue con Docker (Migraciones Automáticas)
+
+Si usas Docker, **no necesitas hacer nada manualmente**. El contenedor ejecuta automáticamente:
+
+1. Script de migración inteligente (`server/migrate.ts`)
+2. Sincronización de schema (`drizzle-kit push`)
+3. Inicio de la aplicación
+
+```bash
+# Simplemente inicia tu contenedor
+docker-compose up -d
+
+# O reconstruye si actualizaste el código
+docker-compose up -d --build
+
+# Ver logs de migración
+docker-compose logs -f app
+```
+
+Las migraciones se ejecutan en el `docker-entrypoint.sh` cada vez que inicias el contenedor. El script es idempotente, así que puedes reiniciar el contenedor sin problemas.
+
+📖 **Más información**: Ver `DOCKER_README.md` para detalles completos sobre Docker.
+
+---
+
+## ✨ Migración Automática (Sin Docker)
 
 Hemos creado un script de migración completamente automático que detecta el estado de tu base de datos y ejecuta todos los pasos necesarios.
 

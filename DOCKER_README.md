@@ -44,16 +44,31 @@ La aplicación estará disponible en `http://localhost:5000`
 
 ### 3. Migraciones de Base de Datos
 
-⚠️ **Las migraciones se ejecutan automáticamente** al iniciar el contenedor.
+✅ **Las migraciones se ejecutan automáticamente** al iniciar el contenedor.
 
-El script `docker-entrypoint.sh` ejecuta:
-1. `drizzle-kit push --force` para sincronizar el esquema (crea la tabla `sessions` y otras)
-2. Inicia la aplicación
+El script `docker-entrypoint.sh` ejecuta automáticamente en orden:
 
-**No necesitas ejecutar migraciones manualmente**, pero si lo necesitas:
+1. **Script de migración inteligente** (`server/migrate.ts`):
+   - Detecta el estado actual de tu base de datos
+   - Crea la tabla `boards` si no existe
+   - Crea boards por defecto para cada proyecto
+   - Migra `project_columns.board_id` → `project_id` (si es necesario)
+   - Migra `tasks.status` → `tasks.column_id` (si es necesario)
+   - Actualiza constraints e índices
+   - **Es idempotente**: Puedes reiniciar el contenedor sin problemas
+
+2. **Sincronización de schema** (`drizzle-kit push --force`):
+   - Sincroniza cualquier cambio adicional en el esquema
+   - Crea tablas faltantes como `sessions`
+
+3. **Inicia la aplicación**
+
+**No necesitas ejecutar migraciones manualmente**. Cada vez que inicies el contenedor, se ejecutarán automáticamente y de forma segura.
+
+Si necesitas ejecutar solo el script de migración:
 
 ```bash
-docker-compose exec app npx drizzle-kit push
+docker-compose exec app npx tsx server/migrate.ts
 ```
 
 ## Solo Docker (sin Docker Compose)

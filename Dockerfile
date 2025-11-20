@@ -28,8 +28,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies + drizzle-kit for migrations
-RUN npm ci --only=production && npm install drizzle-kit
+# Install all dependencies (tsx and drizzle-kit are in devDependencies but needed for migrations)
+RUN npm ci
 
 # Copy built artifacts from builder
 COPY --from=builder /app/dist ./dist
@@ -39,6 +39,9 @@ COPY --from=builder /app/dist/drizzle.config.js ./drizzle.config.js
 
 # Copy shared schema (needed for migrations)
 COPY --from=builder /app/shared ./shared
+
+# Copy migration script
+COPY --from=builder /app/server/migrate.ts ./server/migrate.ts
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./
