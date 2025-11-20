@@ -47,6 +47,7 @@ interface CreateTaskDialogProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   projectId?: string;
+  boardId?: string;
 }
 
 export function CreateTaskDialog({ 
@@ -56,7 +57,8 @@ export function CreateTaskDialog({
   testIdPrefix = "",
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
-  projectId: providedProjectId
+  projectId: providedProjectId,
+  boardId: providedBoardId
 }: CreateTaskDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   
@@ -86,20 +88,29 @@ export function CreateTaskDialog({
   // Observar el projectId seleccionado para cargar las columnas dinámicamente
   const selectedProjectId = providedProjectId || form.watch("projectId");
 
-  // Obtener columnas del proyecto seleccionado
+  // Obtener columnas - si tenemos boardId usar ese endpoint, sino usar el del proyecto
   const { data: projectColumns = [], isLoading: isLoadingColumns } = useQuery<ProjectColumn[]>({
-    queryKey: ["/api/projects", selectedProjectId, "columns"],
-    enabled: !!selectedProjectId,
+    queryKey: providedBoardId 
+      ? ["/api/boards", providedBoardId, "columns"]
+      : ["/api/projects", selectedProjectId, "columns"],
+    enabled: providedBoardId ? !!providedBoardId : !!selectedProjectId,
   });
+
+  // Establecer el projectId proporcionado
+  useEffect(() => {
+    if (providedProjectId) {
+      const currentProjectId = form.getValues("projectId");
+      if (currentProjectId !== providedProjectId) {
+        form.setValue("projectId", providedProjectId);
+      }
+    }
+  }, [providedProjectId, form]);
 
   // Establecer el primer proyecto cuando se carguen los proyectos por primera vez
   // Y validar que el proyecto seleccionado existe en la lista
-  // Solo si no se proporciona projectId desde props
+  // Solo si NO se proporciona projectId desde props
   useEffect(() => {
-    if (providedProjectId) {
-      form.setValue("projectId", providedProjectId);
-      return;
-    }
+    if (providedProjectId) return;
 
     if (projects.length > 0) {
       if (!selectedProjectId) {

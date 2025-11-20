@@ -224,6 +224,7 @@ export default function BoardView() {
           userId={user?.id}
           testIdPrefix="board-view"
           projectId={board.projectId}
+          boardId={board.id}
         />
       )}
 
