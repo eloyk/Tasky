@@ -23,6 +23,7 @@ export interface IStorage {
   upsertUser(user: UpsertUser): Promise<User>;
 
   getAllTasks(): Promise<Task[]>;
+  getTasksByProject(projectId: string): Promise<Task[]>;
   getTask(id: string): Promise<Task | undefined>;
   createTask(task: InsertTask): Promise<Task>;
   updateTaskStatus(id: string, status: string): Promise<Task | undefined>;
@@ -86,6 +87,14 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(tasks)
+      .orderBy(desc(tasks.createdAt));
+  }
+
+  async getTasksByProject(projectId: string): Promise<Task[]> {
+    return await db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId))
       .orderBy(desc(tasks.createdAt));
   }
 

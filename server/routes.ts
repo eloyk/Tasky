@@ -52,8 +52,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/tasks", isAuthenticated, async (req: any, res) => {
     try {
-      const tasks = await storage.getAllTasks();
-      res.json(tasks);
+      const projectId = req.query.projectId as string;
+      
+      if (projectId) {
+        // Filter by specific project
+        const tasks = await storage.getTasksByProject(projectId);
+        res.json(tasks);
+      } else {
+        // Return all tasks (for backward compatibility)
+        const tasks = await storage.getAllTasks();
+        res.json(tasks);
+      }
     } catch (error) {
       console.error("Error fetching tasks:", error);
       res.status(500).json({ message: "Failed to fetch tasks" });
