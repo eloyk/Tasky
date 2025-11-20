@@ -1,5 +1,6 @@
+import { useRef, useEffect } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { Calendar, GripVertical } from "lucide-react";
+import { Calendar } from "lucide-react";
 import { Task } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -14,6 +15,19 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: task.id,
   });
+  
+  const isDraggingRef = useRef(false);
+
+  useEffect(() => {
+    if (transform) {
+      isDraggingRef.current = true;
+    } else if (isDraggingRef.current) {
+      const timer = setTimeout(() => {
+        isDraggingRef.current = false;
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [transform]);
 
   const style = transform
     ? {
@@ -35,31 +49,28 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
     return tmp.textContent || tmp.innerText || '';
   };
 
+  const handleClick = () => {
+    if (isDraggingRef.current) {
+      return;
+    }
+    onClick();
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="bg-card border border-card-border rounded-md p-4 hover-elevate active-elevate-2 transition-all cursor-pointer"
-      onClick={onClick}
+      {...listeners}
+      {...attributes}
+      className="bg-card border border-card-border rounded-md p-4 hover-elevate active-elevate-2 transition-all cursor-grab active:cursor-grabbing"
+      onClick={handleClick}
       data-testid={`task-card-${task.id}`}
     >
       <div className="flex items-start justify-between gap-2 mb-3">
         <h4 className="text-base font-medium leading-tight flex-1">{task.title}</h4>
-        <div className="flex items-center gap-2">
-          <Badge className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority as keyof typeof priorityColors]}`}>
-            {task.priority === "low" ? "Baja" : task.priority === "medium" ? "Media" : "Alta"}
-          </Badge>
-          <button
-            {...listeners}
-            {...attributes}
-            className="cursor-grab active:cursor-grabbing p-1 hover-elevate rounded"
-            onClick={(e) => e.stopPropagation()}
-            data-testid={`drag-handle-${task.id}`}
-            aria-label="Drag task"
-          >
-            <GripVertical className="w-4 h-4 text-muted-foreground" />
-          </button>
-        </div>
+        <Badge className={`text-xs px-3 py-1 rounded-full ${priorityColors[task.priority as keyof typeof priorityColors]}`}>
+          {task.priority === "low" ? "Baja" : task.priority === "medium" ? "Media" : "Alta"}
+        </Badge>
       </div>
 
       {task.description && (

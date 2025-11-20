@@ -10,7 +10,8 @@ import { ObjectPermission, getObjectAclPolicy, setObjectAclPolicy } from "./obje
 import { 
   insertTaskSchema, 
   insertCommentSchema, 
-  insertAttachmentSchema, 
+  insertAttachmentSchema,
+  insertTaskRelationshipSchema,
   insertOrganizationSchema,
   insertProjectSchema,
   insertOrganizationMemberSchema,
@@ -21,6 +22,7 @@ import {
   organizations,
   projects,
   tasks,
+  taskRelationships,
   organizationMembers,
   projectMembers,
   projectColumns,
@@ -1412,6 +1414,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching activity:", error);
       res.status(500).json({ message: "Failed to fetch activity" });
+    }
+  });
+
+  // Get task relationships
+  app.get("/api/tasks/:id/relationships", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      // CRITICAL: Verify task access
+      const { task, allowed } = await verifyTaskAccess(id, user.id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get relationships where this task is the source or target
+      const relationships = await db
+        .select({
+          id: taskRelationships.id,
+          taskId: taskRelationships.taskId,
+          relatedTaskId: taskRelationships.relatedTaskId,
+          relationshipType: taskRelationships.relationshipType,
+          createdById: taskRelationships.createdById,
+          createdAt: taskRelationships.createdAt,
+          relatedTask: {
+            id: tasks.id,
+            title: tasks.title,
+            priority: tasks.priority,
+            columnId: tasks.columnId,
+          },
+        })
+        .from(taskRelationships)
+        .leftJoin(tasks, eq(taskRelationships.relatedTaskId, tasks.id))
+        .where(eq(taskRelationships.taskId, id));
+      
+      res.json(relationships);
+    } catch (error) {
+      console.error("Error fetching task relationships:", error);
+      res.status(500).json({ message: "Failed to fetch task relationships" });
+    }
+  });
+
+  // Create task relationship
+  app.post("/api/tasks/:id/relationships", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      // CRITICAL: Verify task access
+      const { task, allowed } = await verifyTaskAccess(id, user.id);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { relatedTaskId, relationshipType = "related" } = req.body;
+      
+      if (!relatedTaskId) {
+        return res.status(400).json({ message: "Related task ID is required" });
+      }
+      
+      // Verify the related task exists and user has access
+      const { task: relatedTask, allowed: relatedAllowed } = await verifyTaskAccess(relatedTaskId, user.id);
+      
+      if (!relatedTask) {
+        return res.status(404).json({ message: "Related task not found" });
+      }
+      
+      if (!relatedAllowed) {
+        return res.status(403).json({ message: "Access denied to related task" });
+      }
+      
+      // Create the relationship
+      const [relationship] = await db
+        .insert(taskRelationships)
+        .values({
+          taskId: id,
+          relatedTaskId,
+          relationshipType,
+          createdById: user.id,
+        })
+        .returning();
+      
+      res.status(201).json(relationship);
+    } catch (error) {
+      console.error("Error creating task relationship:", error);
+      res.status(500).json({ message: "Failed to create task relationship" });
+    }
+  });
+
+  // Delete task relationship
+  app.delete("/api/task-relationships/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      // Get the relationship to verify access
+      const [relationship] = await db
+        .select()
+        .from(taskRelationships)
+        .where(eq(taskRelationships.id, id));
+      
+      if (!relationship) {
+        return res.status(404).json({ message: "Relationship not found" });
+      }
+      
+      // Verify user has access to the task
+      const { allowed } = await verifyTaskAccess(relationship.taskId, user.id);
+      
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Delete the relationship
+      await db.delete(taskRelationships).where(eq(taskRelationships.id, id));
+      
+      res.json({ message: "Relationship deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting task relationship:", error);
+      res.status(500).json({ message: "Failed to delete task relationship" });
     }
   });
 

@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Calendar, Paperclip, MessageSquare, Trash2, Upload, History } from "lucide-react";
-import { Task, Comment, Attachment, insertCommentSchema } from "@shared/schema";
+import { Task, Comment, Attachment, ProjectColumn, insertCommentSchema } from "@shared/schema";
 import DOMPurify from "isomorphic-dompurify";
 
 type ActivityLogWithUser = {
@@ -70,6 +70,18 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
     queryKey: ["/api/tasks", task?.id, "activity"],
     enabled: !!task,
   });
+
+  // Load project columns to show column names in activity log
+  const { data: projectColumns = [] } = useQuery<ProjectColumn[]>({
+    queryKey: ["/api/projects", task?.projectId, "columns"],
+    enabled: !!task?.projectId,
+  });
+
+  const getColumnName = (columnId: string | null) => {
+    if (!columnId) return "Sin columna";
+    const column = projectColumns.find(c => c.id === columnId);
+    return column?.name || columnId;
+  };
 
   const createCommentMutation = useMutation({
     mutationFn: async (content: string) => {
@@ -364,6 +376,18 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
                                   {" "}a{" "}
                                   <span className="font-medium text-foreground">
                                     {log.newValue === "pendiente" ? "Pendiente" : log.newValue === "en_progreso" ? "En Progreso" : "Completada"}
+                                  </span>
+                                </span>
+                              )}
+                              {log.actionType === "column_change" && (
+                                <span>
+                                  Movió de{" "}
+                                  <span className="font-medium text-foreground">
+                                    {getColumnName(log.oldValue)}
+                                  </span>
+                                  {" "}a{" "}
+                                  <span className="font-medium text-foreground">
+                                    {getColumnName(log.newValue)}
                                   </span>
                                 </span>
                               )}

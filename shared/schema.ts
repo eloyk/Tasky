@@ -265,3 +265,21 @@ export const insertActivityLogSchema = createInsertSchema(activityLog).omit({
 
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
 export type ActivityLog = typeof activityLog.$inferSelect;
+
+// Task Relationships table for linking related tasks
+export const taskRelationships = pgTable("task_relationships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  taskId: varchar("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  relatedTaskId: varchar("related_task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  relationshipType: varchar("relationship_type", { length: 50 }).notNull().default("related"), // 'related', 'blocks', 'blocked_by', 'duplicate'
+  createdById: varchar("created_by_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTaskRelationshipSchema = createInsertSchema(taskRelationships).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTaskRelationship = z.infer<typeof insertTaskRelationshipSchema>;
+export type TaskRelationship = typeof taskRelationships.$inferSelect;
