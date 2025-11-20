@@ -1744,9 +1744,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdById: user.id,
       });
 
-      // Create default columns for the new board
-      await createDefaultProjectColumns(board.id);
-
       res.json(board);
     } catch (error) {
       console.error("Error creating board:", error);
