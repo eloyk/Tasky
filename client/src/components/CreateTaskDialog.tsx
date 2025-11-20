@@ -53,6 +53,7 @@ export function CreateTaskDialog({ onSubmit, isPending, testIdPrefix = "" }: Cre
       status: "pendiente",
       priority: "medium",
       dueDate: "",
+      projectId: "e8f32812-a7ff-4c7a-9166-eba16ae083c7", // Proyecto General por defecto
       createdById: "",
     },
   });
