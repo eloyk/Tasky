@@ -72,16 +72,22 @@ export function CreateTaskDialog({
     enabled: !providedProjectId,
   });
 
+  // Validate that boardId is provided
+  if (!providedBoardId) {
+    throw new Error("CreateTaskDialog requires a boardId prop");
+  }
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: "",
       description: "",
+      boardId: providedBoardId,
       columnId: "",
       priority: "medium",
       dueDate: "",
       projectId: providedProjectId || "",
-      createdById: userId,
+      assigneeId: null,
     },
   });
 
@@ -165,21 +171,21 @@ export function CreateTaskDialog({
       return;
     }
 
-    // Convertir dueDate de string a Date y asegurar que createdById esté establecido
+    // Convertir dueDate de string a Date
     const taskData: InsertTask = {
       ...data,
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
-      createdById: userId || data.createdById,
     };
     onSubmit(taskData);
     form.reset({
       title: "",
       description: "",
+      boardId: providedBoardId,
       columnId: "",
       priority: "medium",
       dueDate: "",
       projectId: selectedProjectId,
-      createdById: userId,
+      assigneeId: null,
     });
     setOpen(false);
   };

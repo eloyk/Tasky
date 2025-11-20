@@ -124,22 +124,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTasksByBoard(boardId: string): Promise<Task[]> {
-    // First get the board to find its project
-    const [board] = await db
-      .select()
-      .from(boards)
-      .where(eq(boards.id, boardId))
-      .limit(1);
-    
-    if (!board) {
-      return [];
-    }
-    
-    // Get all tasks for this board's project
+    // Get all tasks for this specific board
     return await db
       .select()
       .from(tasks)
-      .where(eq(tasks.projectId, board.projectId))
+      .where(eq(tasks.boardId, boardId))
       .orderBy(desc(tasks.createdAt));
   }
 
@@ -148,7 +137,7 @@ export class DatabaseStorage implements IStorage {
     return task;
   }
 
-  async createTask(taskData: InsertTask): Promise<Task> {
+  async createTask(taskData: InsertTask & { createdById: string }): Promise<Task> {
     const [task] = await db
       .insert(tasks)
       .values(taskData)

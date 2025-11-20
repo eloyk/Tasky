@@ -183,6 +183,7 @@ export const tasks = pgTable("tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),
   description: text("description"),
+  boardId: varchar("board_id").notNull().references(() => boards.id, { onDelete: "cascade" }),
   columnId: varchar("column_id").notNull().references(() => projectColumns.id, { onDelete: "restrict" }),
   priority: varchar("priority", { length: 20 }).notNull().default(TaskPriority.MEDIUM),
   dueDate: timestamp("due_date"),
@@ -194,6 +195,7 @@ export const tasks = pgTable("tasks", {
 });
 
 export const insertTaskSchema = createInsertSchema(tasks, {
+  boardId: z.string().min(1, "Board ID is required"),
   dueDate: z.union([z.string(), z.date()]).optional().nullable().transform((val) => {
     if (!val) return null;
     if (val instanceof Date) return val;
@@ -203,6 +205,7 @@ export const insertTaskSchema = createInsertSchema(tasks, {
   id: true,
   createdAt: true,
   updatedAt: true,
+  createdById: true,
 });
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
