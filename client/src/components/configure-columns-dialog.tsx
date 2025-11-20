@@ -6,6 +6,23 @@ import { useToast } from "@/hooks/use-toast";
 import type { Board, ProjectColumn } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -26,6 +43,63 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+interface SortableColumnItemProps {
+  column: ProjectColumn;
+  onEdit: (column: ProjectColumn) => void;
+  onDelete: (columnId: string) => void;
+}
+
+function SortableColumnItem({ column, onEdit, onDelete }: SortableColumnItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: column.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 p-2 border rounded-md bg-background"
+      data-testid={`column-item-${column.id}`}
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing"
+      >
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <span className="flex-1">{column.name}</span>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onEdit(column)}
+        data-testid={`button-edit-column-${column.id}`}
+      >
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onDelete(column.id)}
+        data-testid={`button-delete-column-${column.id}`}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 interface ConfigureColumnsDialogProps {
   board: Board;
   open: boolean;
@@ -36,12 +110,24 @@ export function ConfigureColumnsDialog({ board, open, onOpenChange }: ConfigureC
   const [newColumnName, setNewColumnName] = useState("");
   const [editingColumn, setEditingColumn] = useState<ProjectColumn | null>(null);
   const [deleteColumnId, setDeleteColumnId] = useState<string | null>(null);
+  const [localColumns, setLocalColumns] = useState<ProjectColumn[]>([]);
   const { toast } = useToast();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const { data: columns = [], isLoading } = useQuery<ProjectColumn[]>({
     queryKey: ["/api/boards", board.id, "columns"],
     enabled: open,
   });
+
+  useEffect(() => {
+    setLocalColumns([...columns]);
+  }, [columns]);
 
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
@@ -106,6 +192,53 @@ export function ConfigureColumnsDialog({ board, open, onOpenChange }: ConfigureC
     },
   });
 
+  const reorderMutation = useMutation({
+    mutationFn: async (reorderedColumns: { id: string; order: number }[]) => {
+      return await apiRequest("PATCH", `/api/projects/${board.projectId}/columns/reorder`, {
+        columns: reorderedColumns,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/boards", board.id, "columns"] });
+      toast({
+        title: "Columnas reordenadas",
+        description: "El orden de las columnas se ha actualizado.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo reordenar las columnas.",
+        variant: "destructive",
+      });
+      setLocalColumns([...columns]);
+    },
+  });
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    setLocalColumns((items) => {
+      const oldIndex = items.findIndex((item) => item.id === active.id);
+      const newIndex = items.findIndex((item) => item.id === over.id);
+      
+      const newOrder = arrayMove(items, oldIndex, newIndex);
+      
+      const reorderedColumns = newOrder.map((col, index) => ({
+        id: col.id,
+        order: index,
+      }));
+      
+      reorderMutation.mutate(reorderedColumns);
+      
+      return newOrder;
+    });
+  };
+
   const handleCreate = () => {
     if (!newColumnName.trim()) {
       toast({
@@ -149,39 +282,32 @@ export function ConfigureColumnsDialog({ board, open, onOpenChange }: ConfigureC
               <Label>Columnas Actuales</Label>
               {isLoading ? (
                 <div className="text-sm text-muted-foreground">Cargando...</div>
-              ) : columns.length === 0 ? (
+              ) : localColumns.length === 0 ? (
                 <div className="text-sm text-muted-foreground">
                   No hay columnas. Crea la primera columna.
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {columns.map((column) => (
-                    <div
-                      key={column.id}
-                      className="flex items-center gap-2 p-2 border rounded-md"
-                      data-testid={`column-item-${column.id}`}
-                    >
-                      <GripVertical className="h-4 w-4 text-muted-foreground" />
-                      <span className="flex-1">{column.name}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setEditingColumn({ ...column })}
-                        data-testid={`button-edit-column-${column.id}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setDeleteColumnId(column.id)}
-                        data-testid={`button-delete-column-${column.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={localColumns.map((col) => col.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-2">
+                      {localColumns.map((column) => (
+                        <SortableColumnItem
+                          key={column.id}
+                          column={column}
+                          onEdit={(col) => setEditingColumn({ ...col })}
+                          onDelete={setDeleteColumnId}
+                        />
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </SortableContext>
+                </DndContext>
               )}
             </div>
 

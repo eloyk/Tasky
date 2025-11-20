@@ -20,7 +20,8 @@ export function MainLayout({ children }: MainLayoutProps) {
   };
 
   const pageTitle = getPageTitle();
-  const showProjectSelector = location !== "/";
+  const isBoardView = location.startsWith("/boards/");
+  const showProjectSelector = location !== "/" && !isBoardView;
 
   const style = {
     "--sidebar-width": "16rem",

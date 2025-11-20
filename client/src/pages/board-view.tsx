@@ -223,6 +223,7 @@ export default function BoardView() {
           isPending={createTaskMutation.isPending}
           userId={user?.id}
           testIdPrefix="board-view"
+          projectId={board.projectId}
         />
       )}
 

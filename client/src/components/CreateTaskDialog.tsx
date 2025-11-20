@@ -46,6 +46,7 @@ interface CreateTaskDialogProps {
   testIdPrefix?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  projectId?: string;
 }
 
 export function CreateTaskDialog({ 
@@ -54,7 +55,8 @@ export function CreateTaskDialog({
   userId = "", 
   testIdPrefix = "",
   open: controlledOpen,
-  onOpenChange: controlledOnOpenChange
+  onOpenChange: controlledOnOpenChange,
+  projectId: providedProjectId
 }: CreateTaskDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   
@@ -62,9 +64,10 @@ export function CreateTaskDialog({
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
   const setOpen = controlledOnOpenChange !== undefined ? controlledOnOpenChange : setInternalOpen;
 
-  // Obtener proyectos del usuario
+  // Obtener proyectos del usuario solo si no se proporciona projectId
   const { data: projects = [], isLoading: isLoadingProjects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
+    enabled: !providedProjectId,
   });
 
   const form = useForm<FormValues>({
@@ -75,13 +78,13 @@ export function CreateTaskDialog({
       columnId: "",
       priority: "medium",
       dueDate: "",
-      projectId: "",
+      projectId: providedProjectId || "",
       createdById: userId,
     },
   });
 
   // Observar el projectId seleccionado para cargar las columnas dinámicamente
-  const selectedProjectId = form.watch("projectId");
+  const selectedProjectId = providedProjectId || form.watch("projectId");
 
   // Obtener columnas del proyecto seleccionado
   const { data: projectColumns = [], isLoading: isLoadingColumns } = useQuery<ProjectColumn[]>({
@@ -91,7 +94,13 @@ export function CreateTaskDialog({
 
   // Establecer el primer proyecto cuando se carguen los proyectos por primera vez
   // Y validar que el proyecto seleccionado existe en la lista
+  // Solo si no se proporciona projectId desde props
   useEffect(() => {
+    if (providedProjectId) {
+      form.setValue("projectId", providedProjectId);
+      return;
+    }
+
     if (projects.length > 0) {
       if (!selectedProjectId) {
         // No hay proyecto seleccionado, establecer el primero
@@ -110,7 +119,7 @@ export function CreateTaskDialog({
       form.setValue("projectId", "");
       form.setValue("columnId", "");
     }
-  }, [projects, selectedProjectId, form]);
+  }, [projects, selectedProjectId, form, providedProjectId]);
 
   // Actualizar columnId cuando cambien las columnas del proyecto
   useEffect(() => {
@@ -184,42 +193,44 @@ export function CreateTaskDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="projectId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Proyecto</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={isLoadingProjects || projects.length === 0}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-project">
-                          <SelectValue placeholder="Selecciona un proyecto" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {projects.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            {project.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <div className={providedProjectId ? "" : "grid grid-cols-2 gap-4"}>
+              {!providedProjectId && (
+                <FormField
+                  control={form.control}
+                  name="projectId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Proyecto</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={isLoadingProjects || projects.length === 0}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-project">
+                            <SelectValue placeholder="Selecciona un proyecto" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {projects.map((project) => (
+                            <SelectItem key={project.id} value={project.id}>
+                              {project.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}
                 name="columnId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Columna</FormLabel>
+                    <FormLabel>Estado</FormLabel>
                     <Select
                       value={field.value}
                       onValueChange={field.onChange}
@@ -227,7 +238,7 @@ export function CreateTaskDialog({
                     >
                       <FormControl>
                         <SelectTrigger data-testid="select-column">
-                          <SelectValue placeholder="Selecciona una columna" />
+                          <SelectValue placeholder="Selecciona un estado" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
