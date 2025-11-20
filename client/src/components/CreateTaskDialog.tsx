@@ -19,7 +19,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -28,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Plus } from "lucide-react";
 
 const formSchema = insertTaskSchema.extend({
@@ -103,12 +103,10 @@ export function CreateTaskDialog({ onSubmit, isPending, testIdPrefix = "" }: Cre
                 <FormItem>
                   <FormLabel>Descripción</FormLabel>
                   <FormControl>
-                    <Textarea
-                      placeholder="Detalles de la tarea..."
-                      className="min-h-32 resize-none"
-                      {...field}
+                    <RichTextEditor
                       value={field.value || ""}
-                      data-testid="input-task-description"
+                      onChange={field.onChange}
+                      placeholder="Detalles de la tarea..."
                     />
                   </FormControl>
                   <FormMessage />
