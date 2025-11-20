@@ -148,16 +148,16 @@ export const insertBoardSchema = createInsertSchema(boards).omit({
 export type InsertBoard = z.infer<typeof insertBoardSchema>;
 export type Board = typeof boards.$inferSelect;
 
-// Project columns table - columnas personalizables para cada tablero
+// Project columns table - columnas personalizables para cada proyecto
 export const projectColumns = pgTable("project_columns", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  boardId: varchar("board_id").notNull().references(() => boards.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 100 }).notNull(),
   order: integer("order").notNull(),
   color: varchar("color", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
-  uniqueBoardOrder: index("unique_board_order").on(table.boardId, table.order),
+  uniqueProjectOrder: index("unique_project_order").on(table.projectId, table.order),
 }));
 
 export const insertProjectColumnSchema = createInsertSchema(projectColumns).omit({
