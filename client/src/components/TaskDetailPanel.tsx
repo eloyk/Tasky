@@ -184,6 +184,15 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
     }
   };
 
+  const sanitizedDescription = useMemo(() => {
+    if (!task?.description) return '';
+    return DOMPurify.sanitize(task.description, {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+      ADD_ATTR: ['target', 'rel'],
+    });
+  }, [task?.description]);
+
   if (!task) return null;
 
   const priorityColors = {
@@ -191,15 +200,6 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
     medium: "bg-accent text-accent-foreground",
     high: "bg-destructive/90 text-destructive-foreground",
   };
-
-  const sanitizedDescription = useMemo(() => {
-    if (!task.description) return '';
-    return DOMPurify.sanitize(task.description, {
-      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li'],
-      ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
-      ADD_ATTR: ['target', 'rel'],
-    });
-  }, [task.description]);
 
   return (
     <>
