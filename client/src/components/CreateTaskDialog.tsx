@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { insertTaskSchema } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
+import { insertTaskSchema, type Project } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,13 @@ interface CreateTaskDialogProps {
 export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefix = "" }: CreateTaskDialogProps) {
   const [open, setOpen] = useState(false);
 
+  // Obtener proyectos del usuario
+  const { data: projects = [], isLoading: isLoadingProjects } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+  });
+
+  const defaultProjectId = projects.length > 0 ? projects[0].id : "";
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -55,10 +63,17 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
       status: "pendiente",
       priority: "medium",
       dueDate: "",
-      projectId: "e8f32812-a7ff-4c7a-9166-eba16ae083c7", // Proyecto General por defecto
+      projectId: defaultProjectId,
       createdById: userId,
     },
   });
+
+  // Actualizar el projectId cuando se carguen los proyectos
+  useEffect(() => {
+    if (defaultProjectId && !form.getValues("projectId")) {
+      form.setValue("projectId", defaultProjectId);
+    }
+  }, [defaultProjectId, form]);
 
   const handleSubmit = (data: FormValues) => {
     // Asegurar que createdById esté establecido
@@ -73,7 +88,7 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
       status: "pendiente",
       priority: "medium",
       dueDate: "",
-      projectId: "e8f32812-a7ff-4c7a-9166-eba16ae083c7",
+      projectId: defaultProjectId,
       createdById: userId,
     });
     setOpen(false);
@@ -186,8 +201,12 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isPending} data-testid="button-submit-task">
-                {isPending ? "Creando..." : "Crear Tarea"}
+              <Button 
+                type="submit" 
+                disabled={isPending || isLoadingProjects || !defaultProjectId} 
+                data-testid="button-submit-task"
+              >
+                {isPending ? "Creando..." : isLoadingProjects ? "Cargando..." : "Crear Tarea"}
               </Button>
             </div>
           </form>

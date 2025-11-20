@@ -347,6 +347,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Project routes
+  app.get("/api/projects", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Get all projects where user is a member
+      const userProjects = await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          description: projects.description,
+          organizationId: projects.organizationId,
+          createdById: projects.createdById,
+          createdAt: projects.createdAt,
+          updatedAt: projects.updatedAt,
+        })
+        .from(projects)
+        .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+        .where(eq(projectMembers.userId, user.id));
+
+      res.json(userProjects);
+    } catch (error) {
+      console.error("Error fetching projects:", error);
+      res.status(500).json({ message: "Failed to fetch projects" });
+    }
+  });
+
   app.post("/api/projects", isAuthenticated, async (req: any, res) => {
     try {
       const userEmail = req.user.claims.email;
