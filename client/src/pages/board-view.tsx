@@ -41,20 +41,58 @@ export default function BoardView() {
     mutationFn: async (taskData: InsertTask) => {
       return await apiRequest("POST", "/api/tasks", taskData);
     },
+    onMutate: async (newTask) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: [`/api/boards/${boardId}/tasks`] });
+
+      // Snapshot previous value (deep clone to ensure safe rollback)
+      const cachedTasks = queryClient.getQueryData<Task[]>([`/api/boards/${boardId}/tasks`]) || [];
+      const previousTasks = JSON.parse(JSON.stringify(cachedTasks));
+
+      // Optimistically update to the new value
+      const now = new Date().toISOString();
+      const optimisticTask = {
+        id: `temp-${Date.now()}`,
+        title: newTask.title,
+        description: newTask.description || null,
+        columnId: newTask.columnId,
+        priority: newTask.priority,
+        dueDate: newTask.dueDate || null,
+        projectId: newTask.projectId,
+        assigneeId: newTask.assigneeId || null,
+        createdById: newTask.createdById,
+        createdAt: now,
+        updatedAt: now,
+      } as unknown as Task;
+      
+      queryClient.setQueryData<Task[]>(
+        [`/api/boards/${boardId}/tasks`],
+        [...previousTasks, optimisticTask]
+      );
+
+      return { previousTasks };
+    },
+    onError: (error: Error, newTask, context) => {
+      // Rollback to previous value
+      if (context?.previousTasks) {
+        queryClient.setQueryData([`/api/boards/${boardId}/tasks`], context.previousTasks);
+      }
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo crear la tarea.",
+        variant: "destructive",
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/boards/${boardId}/tasks`] });
       setCreateTaskOpen(false);
       toast({
         title: "Tarea creada",
         description: "La tarea se ha creado correctamente.",
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "No se pudo crear la tarea.",
-        variant: "destructive",
-      });
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: [`/api/boards/${boardId}/tasks`] });
     },
   });
 
@@ -62,19 +100,45 @@ export default function BoardView() {
     mutationFn: async ({ taskId, columnId }: { taskId: string; columnId: string }) => {
       return await apiRequest("PATCH", `/api/tasks/${taskId}/column`, { columnId });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/boards/${boardId}/tasks`] });
-      toast({
-        title: "Tarea movida",
-        description: "La tarea se ha movido correctamente.",
-      });
+    onMutate: async ({ taskId, columnId }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: [`/api/boards/${boardId}/tasks`] });
+
+      // Snapshot previous value (deep clone to ensure safe rollback)
+      const cachedTasks = queryClient.getQueryData<Task[]>([`/api/boards/${boardId}/tasks`]) || [];
+      const previousTasks = JSON.parse(JSON.stringify(cachedTasks));
+
+      // Optimistically update task's column and timestamp
+      const now = new Date().toISOString();
+      const updatedTasks = previousTasks.map((task: Task) =>
+        task.id === taskId 
+          ? { ...task, columnId, updatedAt: now as any } 
+          : task
+      );
+      queryClient.setQueryData<Task[]>([`/api/boards/${boardId}/tasks`], updatedTasks);
+
+      return { previousTasks };
     },
-    onError: (error: Error) => {
+    onError: (error: Error, variables, context) => {
+      // Rollback to previous value
+      if (context?.previousTasks) {
+        queryClient.setQueryData([`/api/boards/${boardId}/tasks`], context.previousTasks);
+      }
       toast({
         title: "Error",
         description: error.message || "No se pudo mover la tarea.",
         variant: "destructive",
       });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Tarea movida",
+        description: "La tarea se ha movido correctamente.",
+      });
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: [`/api/boards/${boardId}/tasks`] });
     },
   });
 
