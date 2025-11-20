@@ -813,7 +813,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      // Check if user is a member and admin of the project
+      // Check if user is a member of the project
       const [membership] = await db
         .select()
         .from(projectMembers)
@@ -824,10 +824,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!membership) {
         return res.status(403).json({ message: "Not a member of this project" });
-      }
-
-      if (membership.role !== ProjectRole.ADMIN) {
-        return res.status(403).json({ message: "Only project admins can add columns" });
       }
 
       // Get max order to place new column at the end
@@ -884,7 +880,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Column does not belong to this project" });
       }
 
-      // Check if user is admin of the project
+      // Check if user is a member of the project
       const [membership] = await db
         .select()
         .from(projectMembers)
@@ -895,10 +891,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!membership) {
         return res.status(403).json({ message: "Not a member of this project" });
-      }
-
-      if (membership.role !== ProjectRole.ADMIN) {
-        return res.status(403).json({ message: "Only project admins can update columns" });
       }
 
       // Validate name using safeParse
@@ -950,7 +942,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Column does not belong to this project" });
       }
 
-      // Check if user is admin of the project
+      // Check if user is a member of the project
       const [membership] = await db
         .select()
         .from(projectMembers)
@@ -961,10 +953,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!membership) {
         return res.status(403).json({ message: "Not a member of this project" });
-      }
-
-      if (membership.role !== ProjectRole.ADMIN) {
-        return res.status(403).json({ message: "Only project admins can delete columns" });
       }
 
       // Check if column has tasks (prevent deletion if it does)
@@ -1005,7 +993,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      // Check if user is admin of the project
+      // Check if user is a member of the project
       const [membership] = await db
         .select()
         .from(projectMembers)
@@ -1016,10 +1004,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!membership) {
         return res.status(403).json({ message: "Not a member of this project" });
-      }
-
-      if (membership.role !== ProjectRole.ADMIN) {
-        return res.status(403).json({ message: "Only project admins can reorder columns" });
       }
 
       // Validate columns array using safeParse

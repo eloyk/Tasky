@@ -267,6 +267,37 @@ class DatabaseMigrator {
         if (hasStatus) {
           console.log('    • Mapeando valores de status a column_id');
           
+          // Primero, verificar si hay proyectos sin columnas y crearlas
+          const projectsWithoutColumns = await this.pool.query(`
+            SELECT DISTINCT p.id, p.created_by_id
+            FROM projects p
+            WHERE NOT EXISTS (
+              SELECT 1 FROM project_columns pc WHERE pc.project_id = p.id
+            )
+            AND EXISTS (
+              SELECT 1 FROM tasks t WHERE t.project_id = p.id
+            )
+          `);
+          
+          if (projectsWithoutColumns.rows.length > 0) {
+            console.log(`    • Creando columnas por defecto para ${projectsWithoutColumns.rows.length} proyectos`);
+            for (const project of projectsWithoutColumns.rows) {
+              // Usar el created_by_id del proyecto o el primer usuario válido
+              const createdById = project.created_by_id;
+              if (!createdById) {
+                throw new Error(`Proyecto ${project.id} no tiene created_by_id válido`);
+              }
+              
+              await this.pool.query(`
+                INSERT INTO project_columns (id, project_id, name, "order", created_at, updated_at)
+                VALUES
+                  (gen_random_uuid(), $1, 'Pendiente', 0, NOW(), NOW()),
+                  (gen_random_uuid(), $1, 'En Progreso', 1, NOW(), NOW()),
+                  (gen_random_uuid(), $1, 'Completada', 2, NOW(), NOW())
+              `, [project.id]);
+            }
+          }
+          
           // Mapeo de status a orden de columna
           // open -> orden 0 (Pendiente)
           // in_progress -> orden 1 (En Progreso)
@@ -285,8 +316,36 @@ class DatabaseMigrator {
               END
               LIMIT 1
             )
-            WHERE t.column_id IS NULL;
+            WHERE t.column_id IS NULL 
+            AND t.project_id IS NOT NULL;
           `);
+          
+          // Para tasks sin project_id válido (caso edge), reportar error
+          const orphanTasks = await this.pool.query(`
+            SELECT t.id, t.title, t.project_id
+            FROM tasks t
+            WHERE t.column_id IS NULL
+            AND (t.project_id IS NULL OR NOT EXISTS (
+              SELECT 1 FROM projects p WHERE p.id = t.project_id
+            ))
+            LIMIT 10
+          `);
+          
+          if (orphanTasks.rows.length > 0) {
+            console.error(`\n❌ ERROR: Encontradas tareas huérfanas sin proyecto válido:`);
+            orphanTasks.rows.forEach((task: any) => {
+              console.error(`   - ID: ${task.id}, Título: "${task.title}", project_id: ${task.project_id || 'NULL'}`);
+            });
+            console.error(`\nAcción requerida:`);
+            console.error(`1. Asigna estas tareas a un proyecto válido, O`);
+            console.error(`2. Elimínalas manualmente usando:`);
+            console.error(`   DELETE FROM comments WHERE task_id IN (SELECT id FROM tasks WHERE column_id IS NULL AND (project_id IS NULL OR NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = project_id)));`);
+            console.error(`   DELETE FROM attachments WHERE task_id IN (SELECT id FROM tasks WHERE column_id IS NULL AND (project_id IS NULL OR NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = project_id)));`);
+            console.error(`   DELETE FROM activity_log WHERE task_id IN (SELECT id FROM tasks WHERE column_id IS NULL AND (project_id IS NULL OR NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = project_id)));`);
+            console.error(`   DELETE FROM tasks WHERE column_id IS NULL AND (project_id IS NULL OR NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = project_id));\n`);
+            
+            throw new Error(`${orphanTasks.rows.length}+ tareas huérfanas detectadas. Ver instrucciones arriba.`);
+          }
         }
 
         // 3. Verificar que todas las tareas tienen column_id
