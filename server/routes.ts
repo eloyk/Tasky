@@ -20,10 +20,12 @@ import {
   projects,
   organizationMembers,
   projectMembers,
+  projectColumns,
   OrganizationRole
 } from "../shared/schema.js";
 import { db } from "./db.js";
 import { eq, and } from "drizzle-orm";
+import { createDefaultProjectColumns } from "./projectHelpers.js";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
@@ -131,6 +133,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get old task state before updating
       const oldTask = await storage.getTask(id);
+      if (!oldTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      // Verify that the target column belongs to the same project as the task
+      const [targetColumn] = await db
+        .select()
+        .from(projectColumns)
+        .where(eq(projectColumns.id, columnId));
+
+      if (!targetColumn) {
+        return res.status(404).json({ message: "Column not found" });
+      }
+
+      if (targetColumn.projectId !== oldTask.projectId) {
+        return res.status(400).json({ message: "Column does not belong to task's project" });
+      }
+
       const task = await storage.updateTaskColumn(id, columnId);
       
       if (!task) {
@@ -414,6 +434,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: 'admin',
       });
 
+      // Create default columns for the project
+      await createDefaultProjectColumns(project.id);
+
       res.json(project);
     } catch (error) {
       console.error("Error creating project:", error);
@@ -454,6 +477,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching project:", error);
       res.status(500).json({ message: "Failed to fetch project" });
+    }
+  });
+
+  app.get("/api/projects/:id/columns", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id: projectId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if user is a member of the project
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this project" });
+      }
+
+      // Get columns ordered by order field
+      const columns = await db
+        .select()
+        .from(projectColumns)
+        .where(eq(projectColumns.projectId, projectId))
+        .orderBy(projectColumns.order);
+
+      res.json(columns);
+    } catch (error) {
+      console.error("Error fetching project columns:", error);
+      res.status(500).json({ message: "Failed to fetch project columns" });
     }
   });
 

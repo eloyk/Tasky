@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
-import { insertTaskSchema, type Project } from "@shared/schema";
+import { insertTaskSchema, type Project, type ProjectColumn } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
@@ -53,31 +53,84 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
     queryKey: ["/api/projects"],
   });
 
-  const defaultProjectId = projects.length > 0 ? projects[0].id : "";
-
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: "",
       description: "",
-      columnId: "", // Se establecerá cuando se carguen las columnas del proyecto
+      columnId: "",
       priority: "medium",
       dueDate: "",
-      projectId: defaultProjectId,
+      projectId: "",
       createdById: userId,
     },
   });
 
-  // Actualizar el projectId cuando se carguen los proyectos
+  // Observar el projectId seleccionado para cargar las columnas dinámicamente
+  const selectedProjectId = form.watch("projectId");
+
+  // Obtener columnas del proyecto seleccionado
+  const { data: projectColumns = [], isLoading: isLoadingColumns } = useQuery<ProjectColumn[]>({
+    queryKey: ["/api/projects", selectedProjectId, "columns"],
+    enabled: !!selectedProjectId,
+  });
+
+  // Establecer el primer proyecto cuando se carguen los proyectos por primera vez
+  // Y validar que el proyecto seleccionado existe en la lista
   useEffect(() => {
-    if (defaultProjectId && !form.getValues("projectId")) {
-      form.setValue("projectId", defaultProjectId);
-      // TODO: Cargar columnas del proyecto y establecer la primera como columnId por defecto
-      form.setValue("columnId", "temp-column-id"); // Temporal hasta que implementemos la carga de columnas
+    if (projects.length > 0) {
+      if (!selectedProjectId) {
+        // No hay proyecto seleccionado, establecer el primero
+        form.setValue("projectId", projects[0].id);
+      } else {
+        // Hay proyecto seleccionado, validar que existe en la lista
+        const projectExists = projects.some(p => p.id === selectedProjectId);
+        if (!projectExists) {
+          // El proyecto seleccionado ya no existe, limpiar y establecer el primero
+          form.setValue("projectId", projects[0].id);
+          form.setValue("columnId", "");
+        }
+      }
+    } else if (selectedProjectId) {
+      // No hay proyectos pero hay projectId seleccionado, limpiar
+      form.setValue("projectId", "");
+      form.setValue("columnId", "");
     }
-  }, [defaultProjectId, form]);
+  }, [projects, selectedProjectId, form]);
+
+  // Actualizar columnId cuando cambien las columnas del proyecto
+  useEffect(() => {
+    const currentColumnId = form.getValues("columnId");
+    
+    if (isLoadingColumns) {
+      // Mientras se cargan las columnas, limpiar el columnId para prevenir estado obsoleto
+      form.setValue("columnId", "");
+      return;
+    }
+
+    if (projectColumns.length > 0) {
+      // Si hay columnas y el actual no existe en las columnas del proyecto
+      const columnExists = projectColumns.some(col => col.id === currentColumnId);
+      if (!currentColumnId || !columnExists) {
+        form.setValue("columnId", projectColumns[0].id);
+      }
+    } else {
+      // Si no hay columnas disponibles, asegurar que columnId esté vacío
+      if (currentColumnId) {
+        form.setValue("columnId", "");
+      }
+    }
+  }, [projectColumns, isLoadingColumns, form]);
 
   const handleSubmit = (data: FormValues) => {
+    // Validar que la columna seleccionada pertenezca al proyecto seleccionado
+    const columnBelongsToProject = projectColumns.some(col => col.id === data.columnId);
+    if (!columnBelongsToProject) {
+      // Este error no debería ocurrir si el UI está configurado correctamente
+      console.error("La columna seleccionada no pertenece al proyecto seleccionado");
+      return;
+    }
+
     // Asegurar que createdById esté establecido
     const taskData = {
       ...data,
@@ -87,10 +140,10 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
     form.reset({
       title: "",
       description: "",
-      columnId: "temp-column-id", // Temporal
+      columnId: "",
       priority: "medium",
       dueDate: "",
-      projectId: defaultProjectId,
+      projectId: selectedProjectId,
       createdById: userId,
     });
     setOpen(false);
@@ -114,6 +167,66 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="projectId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Proyecto</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={isLoadingProjects || projects.length === 0}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-project">
+                          <SelectValue placeholder="Selecciona un proyecto" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="columnId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Columna</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={isLoadingColumns || projectColumns.length === 0}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-column">
+                          <SelectValue placeholder="Selecciona una columna" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {projectColumns.map((column) => (
+                          <SelectItem key={column.id} value={column.id}>
+                            {column.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
             <FormField
               control={form.control}
               name="title"
@@ -205,10 +318,10 @@ export function CreateTaskDialog({ onSubmit, isPending, userId = "", testIdPrefi
               </Button>
               <Button 
                 type="submit" 
-                disabled={isPending || isLoadingProjects || !defaultProjectId} 
+                disabled={isPending || isLoadingProjects || isLoadingColumns || !selectedProjectId || !form.watch("columnId")} 
                 data-testid="button-submit-task"
               >
-                {isPending ? "Creando..." : isLoadingProjects ? "Cargando..." : "Crear Tarea"}
+                {isPending ? "Creando..." : (isLoadingProjects || isLoadingColumns) ? "Cargando..." : "Crear Tarea"}
               </Button>
             </div>
           </form>

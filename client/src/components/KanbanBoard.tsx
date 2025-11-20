@@ -8,17 +8,18 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { Task, TaskStatus } from "@shared/schema";
+import { Task, ProjectColumn } from "@shared/schema";
 import { KanbanColumn } from "./KanbanColumn";
 import { TaskCard } from "./TaskCard";
 
 interface KanbanBoardProps {
   tasks: Task[];
-  onTaskMove: (taskId: string, newStatus: string) => void;
+  columns: ProjectColumn[];
+  onTaskMove: (taskId: string, newColumnId: string) => void;
   onTaskClick: (task: Task) => void;
 }
 
-export function KanbanBoard({ tasks, onTaskMove, onTaskClick }: KanbanBoardProps) {
+export function KanbanBoard({ tasks, columns, onTaskMove, onTaskClick }: KanbanBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
   const sensors = useSensors(
@@ -43,19 +44,15 @@ export function KanbanBoard({ tasks, onTaskMove, onTaskClick }: KanbanBoardProps
     }
 
     const taskId = active.id as string;
-    const newStatus = over.id as string;
+    const newColumnId = over.id as string;
 
     const task = tasks.find((t) => t.id === taskId);
-    if (task && task.status !== newStatus) {
-      onTaskMove(taskId, newStatus);
+    if (task && task.columnId !== newColumnId) {
+      onTaskMove(taskId, newColumnId);
     }
 
     setActiveTask(null);
   };
-
-  const pendientes = tasks.filter((t) => t.status === TaskStatus.PENDIENTE);
-  const enProgreso = tasks.filter((t) => t.status === TaskStatus.EN_PROGRESO);
-  const completadas = tasks.filter((t) => t.status === TaskStatus.COMPLETADA);
 
   return (
     <DndContext
@@ -63,25 +60,19 @@ export function KanbanBoard({ tasks, onTaskMove, onTaskClick }: KanbanBoardProps
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
-        <KanbanColumn
-          id={TaskStatus.PENDIENTE}
-          title="Pendiente"
-          tasks={pendientes}
-          onTaskClick={onTaskClick}
-        />
-        <KanbanColumn
-          id={TaskStatus.EN_PROGRESO}
-          title="En Progreso"
-          tasks={enProgreso}
-          onTaskClick={onTaskClick}
-        />
-        <KanbanColumn
-          id={TaskStatus.COMPLETADA}
-          title="Completada"
-          tasks={completadas}
-          onTaskClick={onTaskClick}
-        />
+      <div className="grid gap-6 h-full" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
+        {columns.map((column) => {
+          const columnTasks = tasks.filter((t) => t.columnId === column.id);
+          return (
+            <KanbanColumn
+              key={column.id}
+              id={column.id}
+              title={column.name}
+              tasks={columnTasks}
+              onTaskClick={onTaskClick}
+            />
+          );
+        })}
       </div>
 
       <DragOverlay>

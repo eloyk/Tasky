@@ -10,6 +10,7 @@ import { storage } from "./storage.js";
 import { db } from "./db.js";
 import { organizations, organizationMembers, projects, projectMembers } from "../shared/schema.js";
 import { eq, and } from "drizzle-orm";
+import { createDefaultProjectColumns } from "./projectHelpers.js";
 
 const getKeycloakConfig = memoize(
   async () => {
@@ -151,6 +152,9 @@ async function upsertUser(claims: any) {
           .returning();
         
         console.log("[upsertUser] Created default project:", defaultProject.id);
+        
+        // Create default columns for the project
+        await createDefaultProjectColumns(defaultProject.id);
       }
 
       // Add user to project
