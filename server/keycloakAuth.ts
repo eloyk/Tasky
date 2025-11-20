@@ -186,10 +186,18 @@ export async function setupAuth(app: Express) {
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
-    const user = {};
-    updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
-    verified(null, user);
+    try {
+      console.log("[Keycloak Auth] Verify function called");
+      const user = {};
+      updateUserSession(user, tokens);
+      console.log("[Keycloak Auth] Session updated");
+      await upsertUser(tokens.claims());
+      console.log("[Keycloak Auth] User upserted, calling verified callback");
+      verified(null, user);
+    } catch (error) {
+      console.error("[Keycloak Auth] Error in verify function:", error);
+      verified(error as Error);
+    }
   };
 
   const STRATEGY_NAME = "keycloak";
@@ -235,6 +243,7 @@ export async function setupAuth(app: Express) {
   });
 
   app.get("/api/callback", (req, res, next) => {
+    console.log(`[Keycloak Auth] Callback endpoint hit. Query params:`, Object.keys(req.query));
     const strategyName = ensureStrategy(req);
     console.log(`[Keycloak Auth] Callback received. Strategy: ${strategyName}`);
     passport.authenticate(strategyName, {
