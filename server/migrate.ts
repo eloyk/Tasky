@@ -540,6 +540,24 @@ class DatabaseMigrator {
         name: 'Índice único unique_board_order existe',
         check: async () => await this.checkIndexExists('unique_board_order'),
       },
+      {
+        name: 'board_columns tiene board_ids válidos',
+        check: async () => {
+          const boardColumnsExists = await this.checkTableExists('board_columns');
+          if (!boardColumnsExists) return true;
+          
+          const result = await this.pool.query(`
+            SELECT COUNT(*) as invalid_count
+            FROM board_columns bc
+            WHERE NOT EXISTS (
+              SELECT 1 FROM boards b WHERE b.id = bc.board_id
+            )
+          `);
+          
+          const invalidCount = parseInt(result.rows[0].invalid_count);
+          return invalidCount === 0;
+        },
+      },
     ];
 
     let allPassed = true;
