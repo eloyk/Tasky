@@ -230,6 +230,41 @@ class DatabaseMigrator {
     };
   }
 
+  private renameProjectColumnsToBoardColumnsStep(): MigrationStep {
+    return {
+      name: 'Renombrar tabla project_columns → board_columns',
+      check: async () => {
+        const boardColumnsExists = await this.checkTableExists('board_columns');
+        if (boardColumnsExists) {
+          return true; // Ya está renombrada
+        }
+        
+        const projectColumnsExists = await this.checkTableExists('project_columns');
+        if (!projectColumnsExists) {
+          console.log('  ℹ️  Tabla project_columns no existe (base de datos nueva), omitiendo renombrado');
+          return true; // Omitir, drizzle creará board_columns directamente
+        }
+        
+        return false; // Necesita renombrarse
+      },
+      execute: async () => {
+        console.log('  → Renombrando tabla project_columns a board_columns...');
+        
+        // Renombrar la tabla
+        await this.pool.query(`ALTER TABLE project_columns RENAME TO board_columns;`);
+        
+        // Renombrar el índice único si existe
+        const hasOldIndex = await this.checkIndexExists('unique_project_order');
+        if (hasOldIndex) {
+          console.log('    • Renombrando índice unique_project_order → unique_board_order');
+          await this.pool.query(`ALTER INDEX unique_project_order RENAME TO unique_board_order;`);
+        }
+        
+        console.log('  ✓ Tabla renombrada a board_columns');
+      }
+    };
+  }
+
   private migrateTasksStatusToColumnIdStep(): MigrationStep {
     return {
       name: 'Migrar tasks.status → tasks.column_id',
@@ -241,10 +276,11 @@ class DatabaseMigrator {
           return true; // Retornar true para omitir este paso
         }
         
-        // También verificar que project_columns existe (necesario para el mapeo)
+        // Verificar que board_columns O project_columns existe (necesario para el mapeo)
+        const boardColumnsExists = await this.checkTableExists('board_columns');
         const projectColumnsExists = await this.checkTableExists('project_columns');
-        if (!projectColumnsExists) {
-          console.log('  ℹ️  Tabla project_columns no existe (base de datos nueva), omitiendo migración de tasks');
+        if (!boardColumnsExists && !projectColumnsExists) {
+          console.log('  ℹ️  Tabla board_columns/project_columns no existe (base de datos nueva), omitiendo migración de tasks');
           return true; // Retornar true para omitir este paso
         }
         
@@ -254,6 +290,11 @@ class DatabaseMigrator {
       },
       execute: async () => {
         console.log('  → Migrando tasks...');
+
+        // Determinar qué tabla de columnas usar
+        const boardColumnsExists = await this.checkTableExists('board_columns');
+        const columnsTable = boardColumnsExists ? 'board_columns' : 'project_columns';
+        console.log(`    • Usando tabla: ${columnsTable}`);
 
         // 1. Agregar columna column_id si no existe
         const hasColumnId = await this.checkColumnExists('tasks', 'column_id');
@@ -283,7 +324,7 @@ class DatabaseMigrator {
             for (const project of projectsWithTasks.rows) {
               // Verificar qué columnas ya existen para este proyecto
               const existingColumns = await this.pool.query(`
-                SELECT "order" FROM project_columns WHERE project_id = $1
+                SELECT "order" FROM ${columnsTable} WHERE project_id = $1
               `, [project.id]);
               
               const existingOrders = new Set(existingColumns.rows.map((r: any) => r.order));
@@ -302,7 +343,7 @@ class DatabaseMigrator {
                 console.log(`      - Proyecto ${project.id}: Creando ${missingColumns.length} columnas faltantes`);
                 for (const col of missingColumns) {
                   await this.pool.query(`
-                    INSERT INTO project_columns (id, project_id, name, "order", created_at)
+                    INSERT INTO ${columnsTable} (id, project_id, name, "order", created_at)
                     VALUES (gen_random_uuid(), $1, $2, $3, NOW())
                   `, [project.id, col.name, col.order]);
                 }
@@ -318,7 +359,7 @@ class DatabaseMigrator {
             UPDATE tasks t
             SET column_id = (
               SELECT pc.id 
-              FROM project_columns pc 
+              FROM ${columnsTable} pc 
               WHERE pc.project_id = t.project_id 
               AND CASE 
                 WHEN t.status = 'open' THEN pc."order" = 0
@@ -381,14 +422,21 @@ class DatabaseMigrator {
           await this.pool.query(`ALTER TABLE tasks ALTER COLUMN column_id SET NOT NULL;`);
         }
 
-        // 5. Agregar foreign key si no existe
-        const hasConstraint = await this.checkConstraintExists('tasks', 'tasks_column_id_project_columns_id_fk');
-        if (!hasConstraint) {
+        // 5. Agregar foreign key si no existe (buscar ambos nombres por si acaso)
+        const hasOldConstraint = await this.checkConstraintExists('tasks', 'tasks_column_id_project_columns_id_fk');
+        const hasNewConstraint = await this.checkConstraintExists('tasks', 'tasks_column_id_board_columns_id_fk');
+        
+        if (!hasOldConstraint && !hasNewConstraint) {
           console.log('    • Agregando foreign key constraint');
+          // Determinar qué tabla existe
+          const boardColumnsExists = await this.checkTableExists('board_columns');
+          const tableName = boardColumnsExists ? 'board_columns' : 'project_columns';
+          const constraintName = boardColumnsExists ? 'tasks_column_id_board_columns_id_fk' : 'tasks_column_id_project_columns_id_fk';
+          
           await this.pool.query(`
             ALTER TABLE tasks
-            ADD CONSTRAINT tasks_column_id_project_columns_id_fk
-            FOREIGN KEY (column_id) REFERENCES project_columns(id) ON DELETE RESTRICT;
+            ADD CONSTRAINT ${constraintName}
+            FOREIGN KEY (column_id) REFERENCES ${tableName}(id) ON DELETE RESTRICT;
           `);
         }
 
@@ -410,6 +458,7 @@ class DatabaseMigrator {
       this.createBoardsTableStep(),
       this.createDefaultBoardsStep(),
       this.migrateProjectColumnsBoardIdStep(),
+      this.renameProjectColumnsToBoardColumnsStep(),
       this.migrateTasksStatusToColumnIdStep(),
     ];
 
@@ -453,12 +502,16 @@ class DatabaseMigrator {
         check: async () => await this.checkTableExists('boards'),
       },
       {
-        name: 'project_columns tiene column project_id',
-        check: async () => await this.checkColumnExists('project_columns', 'project_id'),
+        name: 'Tabla board_columns existe (renombrada desde project_columns)',
+        check: async () => await this.checkTableExists('board_columns'),
       },
       {
-        name: 'project_columns NO tiene columna board_id',
-        check: async () => !(await this.checkColumnExists('project_columns', 'board_id')),
+        name: 'board_columns tiene columna project_id',
+        check: async () => await this.checkColumnExists('board_columns', 'project_id'),
+      },
+      {
+        name: 'board_columns NO tiene columna board_id',
+        check: async () => !(await this.checkColumnExists('board_columns', 'board_id')),
       },
       {
         name: 'tasks tiene columna column_id',
@@ -469,8 +522,8 @@ class DatabaseMigrator {
         check: async () => !(await this.checkColumnExists('tasks', 'status')),
       },
       {
-        name: 'Índice único unique_project_order existe',
-        check: async () => await this.checkIndexExists('unique_project_order'),
+        name: 'Índice único unique_board_order existe',
+        check: async () => await this.checkIndexExists('unique_board_order'),
       },
     ];
 
