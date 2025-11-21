@@ -27,6 +27,10 @@ import {
   projectMembers,
   boardColumns,
   boards,
+  teams,
+  teamMembers,
+  boardTeams,
+  projectTeams,
   OrganizationRole,
   ProjectRole
 } from "../shared/schema.js";
@@ -92,8 +96,8 @@ async function verifyBoardAccess(boardId: string, userId: string): Promise<{ boa
   
   const project = projectResult[0];
   
-  // Check if user is member of project's organization
-  const membership = await db
+  // CRITICAL: ALWAYS verify user is member of project's organization first (tenant isolation)
+  const [orgMembership] = await db
     .select()
     .from(organizationMembers)
     .where(
@@ -104,9 +108,56 @@ async function verifyBoardAccess(boardId: string, userId: string): Promise<{ boa
     )
     .limit(1);
   
+  // User MUST be organization member - this is required for tenant isolation
+  if (!orgMembership) {
+    return {
+      board,
+      allowed: false
+    };
+  }
+  
+  // Admins and Owners have universal access (role-based override)
+  if (orgMembership.role === OrganizationRole.ADMIN || orgMembership.role === OrganizationRole.OWNER) {
+    return {
+      board,
+      allowed: true
+    };
+  }
+  
+  // Check if board has team-based restrictions
+  const boardTeamsAssigned = await db
+    .select()
+    .from(boardTeams)
+    .where(eq(boardTeams.boardId, boardId))
+    .limit(1);
+  
+  // If board has NO team restrictions, all org members have access (default behavior)
+  if (boardTeamsAssigned.length === 0) {
+    return {
+      board,
+      allowed: true
+    };
+  }
+  
+  // Board HAS team restrictions - verify regular member is in an assigned team
+  const teamAccess = await db
+    .select()
+    .from(teamMembers)
+    .innerJoin(boardTeams, eq(teamMembers.teamId, boardTeams.teamId))
+    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+    .where(
+      and(
+        eq(teamMembers.userId, userId),
+        eq(boardTeams.boardId, boardId),
+        // CRITICAL: Ensure team belongs to same organization (defense in depth)
+        eq(teams.organizationId, project.organizationId)
+      )
+    )
+    .limit(1);
+  
   return {
     board,
-    allowed: membership.length > 0
+    allowed: teamAccess.length > 0
   };
 }
 
@@ -120,8 +171,8 @@ async function verifyProjectAccess(projectId: string, userId: string): Promise<{
   
   const project = projectResult[0];
   
-  // Check if user is member of project's organization
-  const membership = await db
+  // CRITICAL: ALWAYS verify user is member of project's organization first (tenant isolation)
+  const [orgMembership] = await db
     .select()
     .from(organizationMembers)
     .where(
@@ -132,9 +183,56 @@ async function verifyProjectAccess(projectId: string, userId: string): Promise<{
     )
     .limit(1);
   
+  // User MUST be organization member - this is required for tenant isolation
+  if (!orgMembership) {
+    return {
+      project,
+      allowed: false
+    };
+  }
+  
+  // Admins and Owners have universal access (role-based override)
+  if (orgMembership.role === OrganizationRole.ADMIN || orgMembership.role === OrganizationRole.OWNER) {
+    return {
+      project,
+      allowed: true
+    };
+  }
+  
+  // Check if project has team-based restrictions
+  const projectTeamsAssigned = await db
+    .select()
+    .from(projectTeams)
+    .where(eq(projectTeams.projectId, projectId))
+    .limit(1);
+  
+  // If project has NO team restrictions, all org members have access (default behavior)
+  if (projectTeamsAssigned.length === 0) {
+    return {
+      project,
+      allowed: true
+    };
+  }
+  
+  // Project HAS team restrictions - verify regular member is in an assigned team
+  const teamAccess = await db
+    .select()
+    .from(teamMembers)
+    .innerJoin(projectTeams, eq(teamMembers.teamId, projectTeams.teamId))
+    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+    .where(
+      and(
+        eq(teamMembers.userId, userId),
+        eq(projectTeams.projectId, projectId),
+        // CRITICAL: Ensure team belongs to same organization (defense in depth)
+        eq(teams.organizationId, project.organizationId)
+      )
+    )
+    .limit(1);
+  
   return {
     project,
-    allowed: membership.length > 0
+    allowed: teamAccess.length > 0
   };
 }
 
@@ -1896,6 +1994,761 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting board:", error);
       res.status(500).json({ message: "Failed to delete board" });
+    }
+  });
+
+  // ========================================
+  // USER PROFILE ROUTES
+  // ========================================
+
+  // Get profile image upload URL
+  app.get("/api/user/profile-image/upload-url", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const objectStorageService = new ObjectStorageService();
+      const uploadData = await objectStorageService.getProfileImageUploadURL();
+      
+      res.json(uploadData);
+    } catch (error) {
+      console.error("Error getting profile image upload URL:", error);
+      res.status(500).json({ message: "Failed to get upload URL" });
+    }
+  });
+
+  // Update user profile (photo, name, etc.)
+  app.put("/api/user/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const updateData = req.body;
+      const allowedFields = ['firstName', 'lastName', 'profileImageUrl'];
+      const filteredData = Object.keys(updateData)
+        .filter(key => allowedFields.includes(key))
+        .reduce((obj, key) => {
+          obj[key] = updateData[key];
+          return obj;
+        }, {} as any);
+
+      const updatedUser = await storage.updateUserProfile(user.id, filteredData);
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Error updating user profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  // Get users with board access (for task assignment)
+  app.get("/api/boards/:boardId/users", isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { allowed } = await verifyBoardAccess(boardId, user.id);
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const usersWithAccess = await storage.getUsersWithBoardAccess(boardId);
+      res.json(usersWithAccess);
+    } catch (error) {
+      console.error("Error fetching board users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // ========================================
+  // TEAMS ROUTES (Admin Only)
+  // ========================================
+
+  // Get all teams in organization
+  app.get("/api/organizations/:organizationId/teams", isAuthenticated, async (req: any, res) => {
+    try {
+      const { organizationId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, organizationId)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const teams = await storage.getTeamsByOrganization(organizationId);
+      res.json(teams);
+    } catch (error) {
+      console.error("Error fetching teams:", error);
+      res.status(500).json({ message: "Failed to fetch teams" });
+    }
+  });
+
+  // Create new team (admin only)
+  app.post("/api/teams", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { organizationId, name, description, color } = req.body;
+
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, organizationId)
+        ));
+
+      if (!membership || (membership.role !== OrganizationRole.ADMIN && membership.role !== OrganizationRole.OWNER)) {
+        return res.status(403).json({ message: "Only admins can create teams" });
+      }
+
+      const team = await storage.createTeam({
+        organizationId,
+        name,
+        description,
+        color,
+        createdById: user.id,
+      });
+
+      res.status(201).json(team);
+    } catch (error) {
+      console.error("Error creating team:", error);
+      res.status(500).json({ message: "Failed to create team" });
+    }
+  });
+
+  // Update team
+  app.put("/api/teams/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const team = await storage.getTeam(id);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, team.organizationId)
+        ));
+
+      if (!membership || (membership.role !== OrganizationRole.ADMIN && membership.role !== OrganizationRole.OWNER)) {
+        return res.status(403).json({ message: "Only admins can update teams" });
+      }
+
+      const { name, description, color } = req.body;
+      const updatedTeam = await storage.updateTeam(id, { name, description, color });
+      res.json(updatedTeam);
+    } catch (error) {
+      console.error("Error updating team:", error);
+      res.status(500).json({ message: "Failed to update team" });
+    }
+  });
+
+  // Delete team
+  app.delete("/api/teams/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const team = await storage.getTeam(id);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, team.organizationId)
+        ));
+
+      if (!membership || (membership.role !== OrganizationRole.ADMIN && membership.role !== OrganizationRole.OWNER)) {
+        return res.status(403).json({ message: "Only admins can delete teams" });
+      }
+
+      const success = await storage.deleteTeam(id);
+      if (!success) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      res.json({ message: "Team deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting team:", error);
+      res.status(500).json({ message: "Failed to delete team" });
+    }
+  });
+
+  // ========================================
+  // TEAM MEMBERS ROUTES
+  // ========================================
+
+  // Get team members
+  app.get("/api/teams/:teamId/members", isAuthenticated, async (req: any, res) => {
+    try {
+      const { teamId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const team = await storage.getTeam(teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, team.organizationId)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const members = await storage.getTeamMembers(teamId);
+      res.json(members);
+    } catch (error) {
+      console.error("Error fetching team members:", error);
+      res.status(500).json({ message: "Failed to fetch team members" });
+    }
+  });
+
+  // Add team member (admin only)
+  app.post("/api/teams/:teamId/members", isAuthenticated, async (req: any, res) => {
+    try {
+      const { teamId } = req.params;
+      const { userId } = req.body;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const team = await storage.getTeam(teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, team.organizationId)
+        ));
+
+      if (!membership || (membership.role !== OrganizationRole.ADMIN && membership.role !== OrganizationRole.OWNER)) {
+        return res.status(403).json({ message: "Only admins can add team members" });
+      }
+
+      const member = await storage.addTeamMember({ teamId, userId });
+      res.status(201).json(member);
+    } catch (error) {
+      console.error("Error adding team member:", error);
+      res.status(500).json({ message: "Failed to add team member" });
+    }
+  });
+
+  // Remove team member (admin only)
+  app.delete("/api/teams/:teamId/members/:userId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { teamId, userId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const team = await storage.getTeam(teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, team.organizationId)
+        ));
+
+      if (!membership || (membership.role !== OrganizationRole.ADMIN && membership.role !== OrganizationRole.OWNER)) {
+        return res.status(403).json({ message: "Only admins can remove team members" });
+      }
+
+      const success = await storage.removeTeamMember(teamId, userId);
+      if (!success) {
+        return res.status(404).json({ message: "Team member not found" });
+      }
+
+      res.json({ message: "Team member removed successfully" });
+    } catch (error) {
+      console.error("Error removing team member:", error);
+      res.status(500).json({ message: "Failed to remove team member" });
+    }
+  });
+
+  // ========================================
+  // BOARD TEAM PERMISSIONS ROUTES
+  // ========================================
+
+  // Get board teams
+  app.get("/api/boards/:boardId/teams", isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { allowed } = await verifyBoardAccess(boardId, user.id);
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const boardTeams = await storage.getBoardTeams(boardId);
+      res.json(boardTeams);
+    } catch (error) {
+      console.error("Error fetching board teams:", error);
+      res.status(500).json({ message: "Failed to fetch board teams" });
+    }
+  });
+
+  // Assign team to board (admin only)
+  app.post("/api/boards/:boardId/teams", isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId } = req.params;
+      const { teamId, permission } = req.body;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { board, allowed } = await verifyBoardAccess(boardId, user.id);
+      if (!board || !allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, board.projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== ProjectRole.ADMIN) {
+        return res.status(403).json({ message: "Only project admins can assign teams to boards" });
+      }
+
+      const boardTeam = await storage.assignTeamToBoard({
+        boardId,
+        teamId,
+        permission: permission || 'view',
+      });
+
+      res.status(201).json(boardTeam);
+    } catch (error) {
+      console.error("Error assigning team to board:", error);
+      res.status(500).json({ message: "Failed to assign team to board" });
+    }
+  });
+
+  // Update board team permission (admin only)
+  app.put("/api/boards/:boardId/teams/:teamId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId, teamId } = req.params;
+      const { permission } = req.body;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { board, allowed } = await verifyBoardAccess(boardId, user.id);
+      if (!board || !allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, board.projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== ProjectRole.ADMIN) {
+        return res.status(403).json({ message: "Only project admins can update team permissions" });
+      }
+
+      const updated = await storage.updateBoardTeamPermission(boardId, teamId, permission);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating board team permission:", error);
+      res.status(500).json({ message: "Failed to update permission" });
+    }
+  });
+
+  // Remove team from board (admin only)
+  app.delete("/api/boards/:boardId/teams/:teamId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { boardId, teamId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { board, allowed } = await verifyBoardAccess(boardId, user.id);
+      if (!board || !allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, board.projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== ProjectRole.ADMIN) {
+        return res.status(403).json({ message: "Only project admins can remove teams from boards" });
+      }
+
+      const success = await storage.removeTeamFromBoard(boardId, teamId);
+      if (!success) {
+        return res.status(404).json({ message: "Board team assignment not found" });
+      }
+
+      res.json({ message: "Team removed from board successfully" });
+    } catch (error) {
+      console.error("Error removing team from board:", error);
+      res.status(500).json({ message: "Failed to remove team from board" });
+    }
+  });
+
+  // ========================================
+  // PROJECT TEAM PERMISSIONS ROUTES
+  // ========================================
+
+  // Get project teams
+  app.get("/api/projects/:projectId/teams", isAuthenticated, async (req: any, res) => {
+    try {
+      const { projectId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { allowed } = await verifyProjectAccess(projectId, user.id);
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const projectTeams = await storage.getProjectTeams(projectId);
+      res.json(projectTeams);
+    } catch (error) {
+      console.error("Error fetching project teams:", error);
+      res.status(500).json({ message: "Failed to fetch project teams" });
+    }
+  });
+
+  // Assign team to project (admin only)
+  app.post("/api/projects/:projectId/teams", isAuthenticated, async (req: any, res) => {
+    try {
+      const { projectId } = req.params;
+      const { teamId, permission } = req.body;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { allowed } = await verifyProjectAccess(projectId, user.id);
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== ProjectRole.ADMIN) {
+        return res.status(403).json({ message: "Only project admins can assign teams to projects" });
+      }
+
+      const projectTeam = await storage.assignTeamToProject({
+        projectId,
+        teamId,
+        permission: permission || 'view',
+      });
+
+      res.status(201).json(projectTeam);
+    } catch (error) {
+      console.error("Error assigning team to project:", error);
+      res.status(500).json({ message: "Failed to assign team to project" });
+    }
+  });
+
+  // Update project team permission (admin only)
+  app.put("/api/projects/:projectId/teams/:teamId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { projectId, teamId } = req.params;
+      const { permission } = req.body;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { allowed } = await verifyProjectAccess(projectId, user.id);
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== ProjectRole.ADMIN) {
+        return res.status(403).json({ message: "Only project admins can update team permissions" });
+      }
+
+      const updated = await storage.updateProjectTeamPermission(projectId, teamId, permission);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating project team permission:", error);
+      res.status(500).json({ message: "Failed to update permission" });
+    }
+  });
+
+  // Remove team from project (admin only)
+  app.delete("/api/projects/:projectId/teams/:teamId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { projectId, teamId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { allowed } = await verifyProjectAccess(projectId, user.id);
+      if (!allowed) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership || membership.role !== ProjectRole.ADMIN) {
+        return res.status(403).json({ message: "Only project admins can remove teams from projects" });
+      }
+
+      const success = await storage.removeTeamFromProject(projectId, teamId);
+      if (!success) {
+        return res.status(404).json({ message: "Project team assignment not found" });
+      }
+
+      res.json({ message: "Team removed from project successfully" });
+    } catch (error) {
+      console.error("Error removing team from project:", error);
+      res.status(500).json({ message: "Failed to remove team from project" });
+    }
+  });
+
+  // ========================================
+  // INVITATIONS ROUTES (Admin Only)
+  // ========================================
+
+  // Get organization invitations
+  app.get("/api/organizations/:organizationId/invitations", isAuthenticated, async (req: any, res) => {
+    try {
+      const { organizationId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, organizationId)
+        ));
+
+      if (!membership || (membership.role !== OrganizationRole.ADMIN && membership.role !== OrganizationRole.OWNER)) {
+        return res.status(403).json({ message: "Only admins can view invitations" });
+      }
+
+      const invitations = await storage.getOrganizationInvitations(organizationId);
+      res.json(invitations);
+    } catch (error) {
+      console.error("Error fetching invitations:", error);
+      res.status(500).json({ message: "Failed to fetch invitations" });
+    }
+  });
+
+  // Create invitation (admin only)
+  app.post("/api/invitations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const { organizationId, email, role } = req.body;
+
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, organizationId)
+        ));
+
+      if (!membership || (membership.role !== OrganizationRole.ADMIN && membership.role !== OrganizationRole.OWNER)) {
+        return res.status(403).json({ message: "Only admins can send invitations" });
+      }
+
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      const invitation = await storage.createInvitation({
+        organizationId,
+        email,
+        role: role || OrganizationRole.MEMBER,
+        status: 'pending',
+        expiresAt,
+        invitedById: user.id,
+      });
+
+      res.status(201).json(invitation);
+    } catch (error) {
+      console.error("Error creating invitation:", error);
+      res.status(500).json({ message: "Failed to create invitation" });
+    }
+  });
+
+  // Delete invitation (admin only)
+  app.delete("/api/invitations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const invitation = await storage.getInvitation(id);
+      if (!invitation) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, invitation.organizationId)
+        ));
+
+      if (!membership || (membership.role !== OrganizationRole.ADMIN && membership.role !== OrganizationRole.OWNER)) {
+        return res.status(403).json({ message: "Only admins can delete invitations" });
+      }
+
+      const success = await storage.deleteInvitation(id);
+      if (!success) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+
+      res.json({ message: "Invitation deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting invitation:", error);
+      res.status(500).json({ message: "Failed to delete invitation" });
     }
   });
 

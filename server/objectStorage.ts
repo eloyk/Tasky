@@ -144,6 +144,37 @@ export class ObjectStorageService {
     };
   }
 
+  async getProfileImageUploadURL(): Promise<{ uploadURL: string; objectPath: string; publicUrl: string }> {
+    const publicPaths = this.getPublicObjectSearchPaths();
+    if (publicPaths.length === 0) {
+      throw new Error(
+        "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a bucket in 'Object Storage' " +
+          "tool and set PUBLIC_OBJECT_SEARCH_PATHS env var."
+      );
+    }
+
+    const publicObjectDir = publicPaths[0];
+    const objectId = randomUUID();
+    const fullPath = `${publicObjectDir}/profile-images/${objectId}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+
+    const uploadURL = await signObjectURL({
+      bucketName,
+      objectName,
+      method: "PUT",
+      ttlSec: 900,
+    });
+
+    const publicUrl = `https://storage.googleapis.com/${bucketName}/${objectName}`;
+
+    return {
+      uploadURL,
+      objectPath: `/public/profile-images/${objectId}`,
+      publicUrl,
+    };
+  }
+
   async getObjectEntityFile(objectPath: string): Promise<File> {
     if (!objectPath.startsWith("/objects/")) {
       throw new ObjectNotFoundError();

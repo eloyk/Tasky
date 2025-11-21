@@ -287,3 +287,128 @@ export const insertTaskRelationshipSchema = createInsertSchema(taskRelationships
 
 export type InsertTaskRelationship = z.infer<typeof insertTaskRelationshipSchema>;
 export type TaskRelationship = typeof taskRelationships.$inferSelect;
+
+// Teams table - Equipos para agrupar usuarios
+export const teams = pgTable("teams", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  color: varchar("color", { length: 20 }),
+  createdById: varchar("created_by_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTeamSchema = createInsertSchema(teams).omit({
+  id: true,
+  createdById: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTeam = z.infer<typeof insertTeamSchema>;
+export type Team = typeof teams.$inferSelect;
+
+// Team members table - Miembros de equipos
+export const teamMembers = pgTable("team_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  teamId: varchar("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueTeamUser: uniqueIndex("unique_team_user").on(table.teamId, table.userId),
+}));
+
+export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
+export type TeamMember = typeof teamMembers.$inferSelect;
+
+// Board team permissions - Asignar equipos a boards con permisos
+export const BoardTeamPermission = {
+  VIEW: "view",       // Solo ver tareas
+  EDIT: "edit",       // Ver y editar tareas
+  ADMIN: "admin",     // Control total del board
+} as const;
+
+export type BoardTeamPermissionType = typeof BoardTeamPermission[keyof typeof BoardTeamPermission];
+
+export const boardTeams = pgTable("board_teams", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  boardId: varchar("board_id").notNull().references(() => boards.id, { onDelete: "cascade" }),
+  teamId: varchar("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  permission: varchar("permission", { length: 20 }).notNull().default(BoardTeamPermission.VIEW),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueBoardTeam: uniqueIndex("unique_board_team").on(table.boardId, table.teamId),
+}));
+
+export const insertBoardTeamSchema = createInsertSchema(boardTeams).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertBoardTeam = z.infer<typeof insertBoardTeamSchema>;
+export type BoardTeam = typeof boardTeams.$inferSelect;
+
+// Project team permissions - Asignar equipos a proyectos
+export const ProjectTeamPermission = {
+  VIEW: "view",       // Solo ver
+  EDIT: "edit",       // Ver y editar
+  ADMIN: "admin",     // Control total
+} as const;
+
+export type ProjectTeamPermissionType = typeof ProjectTeamPermission[keyof typeof ProjectTeamPermission];
+
+export const projectTeams = pgTable("project_teams", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  teamId: varchar("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  permission: varchar("permission", { length: 20 }).notNull().default(ProjectTeamPermission.VIEW),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueProjectTeam: uniqueIndex("unique_project_team").on(table.projectId, table.teamId),
+}));
+
+export const insertProjectTeamSchema = createInsertSchema(projectTeams).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertProjectTeam = z.infer<typeof insertProjectTeamSchema>;
+export type ProjectTeam = typeof projectTeams.$inferSelect;
+
+// Invitations table - Invitar usuarios a la organización
+export const InvitationStatus = {
+  PENDING: "pending",
+  ACCEPTED: "accepted",
+  EXPIRED: "expired",
+} as const;
+
+export type InvitationStatusType = typeof InvitationStatus[keyof typeof InvitationStatus];
+
+export const invitations = pgTable("invitations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  email: varchar("email", { length: 255 }).notNull(),
+  role: varchar("role", { length: 20 }).notNull().default(OrganizationRole.MEMBER),
+  invitedById: varchar("invited_by_id").notNull().references(() => users.id),
+  status: varchar("status", { length: 20 }).notNull().default(InvitationStatus.PENDING),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueOrgEmail: uniqueIndex("unique_org_email_invitation").on(table.organizationId, table.email, table.status),
+}));
+
+export const insertInvitationSchema = createInsertSchema(invitations).omit({
+  id: true,
+  invitedById: true,
+  createdAt: true,
+});
+
+export type InsertInvitation = z.infer<typeof insertInvitationSchema>;
+export type Invitation = typeof invitations.$inferSelect;
