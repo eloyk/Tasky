@@ -220,98 +220,78 @@ class DatabaseMigrator {
         
         // Paso 3: Detectar y recrear filas con datos corruptos
         const corruptedRows = await this.pool.query(`
-          SELECT bc.*, p.id as project_exists
+          SELECT bc.id, bc.board_id as project_id, bc.name, bc."order", bc.color
           FROM board_columns bc
-          LEFT JOIN boards b ON b.id = bc.board_id
-          LEFT JOIN projects p ON p.id = bc.board_id
-          WHERE b.id IS NULL
+          WHERE NOT EXISTS (
+            SELECT 1 FROM boards b WHERE b.id = bc.board_id
+          )
         `);
         
         if (corruptedRows.rows.length > 0) {
           console.log(`    • Encontradas ${corruptedRows.rows.length} filas corruptas, recreando...`);
           
-          // Obtener todas las columnas únicas (por project_id que está guardado como board_id)
-          const uniqueColumns = await this.pool.query(`
-            SELECT DISTINCT ON (board_id, name, "order") 
-              board_id as project_id, name, "order", color
-            FROM board_columns
-            WHERE NOT EXISTS (
-              SELECT 1 FROM boards WHERE id = board_columns.board_id
-            )
-            ORDER BY board_id, name, "order"
-          `);
+          // Agrupar por project_id, name, order para obtener columnas únicas
+          const uniqueColumnsMap = new Map<string, any>();
+          for (const row of corruptedRows.rows) {
+            const key = `${row.project_id}:${row.name}:${row.order}`;
+            if (!uniqueColumnsMap.has(key)) {
+              uniqueColumnsMap.set(key, row);
+            }
+          }
           
-          console.log(`    • Procesando ${uniqueColumns.rows.length} columnas únicas...`);
+          const uniqueColumns = Array.from(uniqueColumnsMap.values());
+          console.log(`    • Procesando ${uniqueColumns.length} columnas únicas...`);
           
-          // Mapeo de columnas antiguas (corruptas) a nuevas columnas por board
-          const columnMapping = new Map<string, Map<string, string>>(); // oldColumnId -> boardId -> newColumnId
-          
-          for (const column of uniqueColumns.rows) {
+          // Procesar cada columna única
+          for (const oldColumn of uniqueColumns) {
             // Obtener todos los boards de este proyecto
             const boards = await this.pool.query(
               `SELECT id FROM boards WHERE project_id = $1`,
-              [column.project_id]
+              [oldColumn.project_id]
             );
             
             if (boards.rows.length === 0) {
-              console.log(`    ⚠️  No hay boards para project ${column.project_id}, omitiendo columna "${column.name}"`);
+              console.log(`    ⚠️  No hay boards para project ${oldColumn.project_id}, omitiendo columna "${oldColumn.name}"`);
               continue;
             }
             
-            // Obtener ID de la columna corrupta original
-            const oldColumnResult = await this.pool.query(`
-              SELECT id FROM board_columns
-              WHERE board_id = $1 AND name = $2 AND "order" = $3
-              LIMIT 1
-            `, [column.project_id, column.name, column.order]);
-            
-            const oldColumnId = oldColumnResult.rows[0]?.id;
-            
-            if (!oldColumnId) continue;
-            
-            const boardMapping = new Map<string, string>();
-            
-            // Crear la columna para cada board
+            // Crear la columna para cada board y mapear
             for (const board of boards.rows) {
               const newColumnResult = await this.pool.query(`
                 INSERT INTO board_columns (board_id, name, "order", color)
                 VALUES ($1, $2, $3, $4)
-                ON CONFLICT DO NOTHING
                 RETURNING id
-              `, [board.id, column.name, column.order, column.color]);
+              `, [board.id, oldColumn.name, oldColumn.order, oldColumn.color]);
               
-              if (newColumnResult.rows[0]) {
-                boardMapping.set(board.id, newColumnResult.rows[0].id);
-              }
+              const newColumnId = newColumnResult.rows[0].id;
+              
+              // Actualizar tasks de ESTE board que usan la columna corrupta
+              await this.pool.query(`
+                UPDATE tasks 
+                SET column_id = $1 
+                WHERE board_id = $2 AND column_id = $3
+              `, [newColumnId, board.id, oldColumn.id]);
             }
             
-            columnMapping.set(oldColumnId, boardMapping);
-            console.log(`    ✓ Recreada columna "${column.name}" para ${boards.rows.length} board(s)`);
+            console.log(`    ✓ Recreada columna "${oldColumn.name}" para ${boards.rows.length} board(s)`);
           }
           
-          // Actualizar tasks que referencian columnas corruptas
-          console.log('    • Actualizando tasks para usar nuevas columnas...');
-          let tasksUpdated = 0;
+          // Verificar cuántas tasks fueron actualizadas
+          const tasksStillReferencing = await this.pool.query(`
+            SELECT COUNT(*) as count
+            FROM tasks t
+            WHERE EXISTS (
+              SELECT 1 FROM board_columns bc
+              WHERE bc.id = t.column_id
+              AND NOT EXISTS (SELECT 1 FROM boards b WHERE b.id = bc.board_id)
+            )
+          `);
           
-          for (const [oldColumnId, boardMapping] of columnMapping) {
-            // Obtener todas las tasks que usan esta columna corrupta
-            const tasksResult = await this.pool.query(`
-              SELECT id, board_id FROM tasks WHERE column_id = $1
-            `, [oldColumnId]);
-            
-            for (const task of tasksResult.rows) {
-              const newColumnId = boardMapping.get(task.board_id);
-              if (newColumnId) {
-                await this.pool.query(`
-                  UPDATE tasks SET column_id = $1 WHERE id = $2
-                `, [newColumnId, task.id]);
-                tasksUpdated++;
-              }
-            }
-          }
-          
-          if (tasksUpdated > 0) {
-            console.log(`    ✓ Actualizadas ${tasksUpdated} task(s)`);
+          const stillReferencing = parseInt(tasksStillReferencing.rows[0].count);
+          if (stillReferencing > 0) {
+            console.log(`    ⚠️  Todavía quedan ${stillReferencing} task(s) referenciando columnas corruptas`);
+          } else {
+            console.log(`    ✓ Todas las tasks actualizadas correctamente`);
           }
           
           // Eliminar filas corruptas (ahora ya no están referenciadas)
