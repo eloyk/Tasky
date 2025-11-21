@@ -20,6 +20,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "client"
+    "client",
+    "server/migrate-boardid.ts"
   ]
 }

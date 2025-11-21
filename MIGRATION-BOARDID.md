@@ -92,3 +92,14 @@ Las nuevas tareas creadas después de esta migración tienen validación robusta
 - Una vez ejecutada, no se vuelve a ejecutar
 - El script está en `server/migrate-boardid.ts`
 - La migración se ejecuta automáticamente en `docker-entrypoint.sh`
+- **Importante**: El script está excluido del build de TypeScript (`tsconfig.server.json`) ya que es solo para migración one-time
+
+## Ejecutar la migración manualmente
+
+Si necesitas ejecutar la migración manualmente en desarrollo:
+
+```bash
+npx tsx server/migrate-boardid.ts
+```
+
+**Nota**: Este script NO se compila en el build de producción. Solo se ejecuta a través de `docker-entrypoint.sh` durante el inicio del contenedor.
