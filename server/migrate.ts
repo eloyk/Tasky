@@ -165,6 +165,59 @@ class DatabaseMigrator {
   // Las bases de datos nuevas se crean directamente con el schema correcto
   // mediante drizzle-kit push --force (ejecutado en docker-entrypoint.sh)
 
+  private fixBoardColumnsColumnNameStep(): MigrationStep {
+    return {
+      name: 'Corregir board_columns: renombrar project_id → board_id',
+      check: async () => {
+        const boardColumnsExists = await this.checkTableExists('board_columns');
+        if (!boardColumnsExists) {
+          console.log('  ℹ️  Tabla board_columns no existe, omitiendo');
+          return true;
+        }
+        
+        const hasBoardId = await this.checkColumnExists('board_columns', 'board_id');
+        if (hasBoardId) {
+          return true; // Ya tiene board_id, está correcto
+        }
+        
+        return false; // Necesita corrección
+      },
+      execute: async () => {
+        console.log('  → Corrigiendo nombres de columnas en board_columns...');
+        
+        const hasProjectId = await this.checkColumnExists('board_columns', 'project_id');
+        if (hasProjectId) {
+          console.log('    • Renombrando project_id → board_id');
+          await this.pool.query(`
+            ALTER TABLE board_columns RENAME COLUMN project_id TO board_id;
+          `);
+        }
+        
+        // Eliminar constraint antiguo si existe
+        const hasOldConstraint = await this.checkConstraintExists('board_columns', 'project_columns_project_id_projects_id_fk');
+        if (hasOldConstraint) {
+          console.log('    • Eliminando constraint antiguo');
+          await this.pool.query(`
+            ALTER TABLE board_columns DROP CONSTRAINT project_columns_project_id_projects_id_fk;
+          `);
+        }
+        
+        // Agregar nuevo constraint correcto
+        const hasNewConstraint = await this.checkConstraintExists('board_columns', 'board_columns_board_id_boards_id_fk');
+        if (!hasNewConstraint) {
+          console.log('    • Agregando constraint correcto');
+          await this.pool.query(`
+            ALTER TABLE board_columns
+            ADD CONSTRAINT board_columns_board_id_boards_id_fk
+            FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE;
+          `);
+        }
+        
+        console.log('  ✓ board_columns corregido');
+      }
+    };
+  }
+
   private migrateTasksStatusToColumnIdStep(): MigrationStep {
     return {
       name: 'Migrar tasks.status → tasks.column_id',
@@ -345,6 +398,7 @@ class DatabaseMigrator {
     const steps: MigrationStep[] = [
       this.createBoardsTableStep(),
       this.createDefaultBoardsStep(),
+      this.fixBoardColumnsColumnNameStep(),
       this.migrateTasksStatusToColumnIdStep(),
     ];
 
