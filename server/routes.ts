@@ -865,16 +865,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/projects/:id/columns/reorder", isAuthenticated, async (req: any, res) => {
     try {
       const { id: projectId } = req.params;
+      console.log("[REORDER] Request received for project:", projectId);
+      console.log("[REORDER] Request body:", JSON.stringify(req.body, null, 2));
+      
       const userEmail = req.user.claims.email;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
+        console.error("[REORDER] User not found:", userEmail);
         return res.status(401).json({ message: "User not found" });
       }
 
       // Verify project exists first
       const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
       if (!project) {
+        console.error("[REORDER] Project not found:", projectId);
         return res.status(404).json({ message: "Project not found" });
       }
 
@@ -888,6 +893,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ));
 
       if (!membership) {
+        console.error("[REORDER] User not a member:", user.id, projectId);
         return res.status(403).json({ message: "Not a member of this project" });
       }
 
@@ -900,11 +906,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validation = columnsSchema.safeParse(req.body.columns);
       
       if (!validation.success) {
+        console.error("[REORDER] Validation failed:", validation.error.errors);
         return res.status(400).json({ 
           message: "Invalid column data", 
           errors: validation.error.errors 
         });
       }
+
+      console.log("[REORDER] Updating columns:", validation.data);
 
       // Update order for each column (verify they belong to this project)
       for (const column of validation.data) {
@@ -924,9 +933,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(projectColumns.projectId, projectId))
         .orderBy(projectColumns.order);
 
+      console.log("[REORDER] Success! Updated columns:", updatedColumns.length);
       res.json(updatedColumns);
     } catch (error) {
-      console.error("Error reordering project columns:", error);
+      console.error("[REORDER] Error reordering project columns:", error);
+      console.error("[REORDER] Error stack:", (error as Error).stack);
       res.status(500).json({ message: "Failed to reorder columns" });
     }
   });
