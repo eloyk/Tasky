@@ -243,6 +243,9 @@ class DatabaseMigrator {
           
           console.log(`    • Procesando ${uniqueColumns.rows.length} columnas únicas...`);
           
+          // Mapeo de columnas antiguas (corruptas) a nuevas columnas por board
+          const columnMapping = new Map<string, Map<string, string>>(); // oldColumnId -> boardId -> newColumnId
+          
           for (const column of uniqueColumns.rows) {
             // Obtener todos los boards de este proyecto
             const boards = await this.pool.query(
@@ -255,19 +258,63 @@ class DatabaseMigrator {
               continue;
             }
             
+            // Obtener ID de la columna corrupta original
+            const oldColumnResult = await this.pool.query(`
+              SELECT id FROM board_columns
+              WHERE board_id = $1 AND name = $2 AND "order" = $3
+              LIMIT 1
+            `, [column.project_id, column.name, column.order]);
+            
+            const oldColumnId = oldColumnResult.rows[0]?.id;
+            
+            if (!oldColumnId) continue;
+            
+            const boardMapping = new Map<string, string>();
+            
             // Crear la columna para cada board
             for (const board of boards.rows) {
-              await this.pool.query(`
+              const newColumnResult = await this.pool.query(`
                 INSERT INTO board_columns (board_id, name, "order", color)
                 VALUES ($1, $2, $3, $4)
                 ON CONFLICT DO NOTHING
+                RETURNING id
               `, [board.id, column.name, column.order, column.color]);
+              
+              if (newColumnResult.rows[0]) {
+                boardMapping.set(board.id, newColumnResult.rows[0].id);
+              }
             }
             
+            columnMapping.set(oldColumnId, boardMapping);
             console.log(`    ✓ Recreada columna "${column.name}" para ${boards.rows.length} board(s)`);
           }
           
-          // Eliminar filas corruptas
+          // Actualizar tasks que referencian columnas corruptas
+          console.log('    • Actualizando tasks para usar nuevas columnas...');
+          let tasksUpdated = 0;
+          
+          for (const [oldColumnId, boardMapping] of columnMapping) {
+            // Obtener todas las tasks que usan esta columna corrupta
+            const tasksResult = await this.pool.query(`
+              SELECT id, board_id FROM tasks WHERE column_id = $1
+            `, [oldColumnId]);
+            
+            for (const task of tasksResult.rows) {
+              const newColumnId = boardMapping.get(task.board_id);
+              if (newColumnId) {
+                await this.pool.query(`
+                  UPDATE tasks SET column_id = $1 WHERE id = $2
+                `, [newColumnId, task.id]);
+                tasksUpdated++;
+              }
+            }
+          }
+          
+          if (tasksUpdated > 0) {
+            console.log(`    ✓ Actualizadas ${tasksUpdated} task(s)`);
+          }
+          
+          // Eliminar filas corruptas (ahora ya no están referenciadas)
           console.log('    • Eliminando filas corruptas originales...');
           await this.pool.query(`
             DELETE FROM board_columns
