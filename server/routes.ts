@@ -915,16 +915,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("[REORDER] Updating columns:", validation.data);
 
-      // Update order for each column (verify they belong to this project)
-      for (const column of validation.data) {
-        await db
-          .update(projectColumns)
-          .set({ order: column.order })
-          .where(and(
-            eq(projectColumns.id, column.id),
-            eq(projectColumns.projectId, projectId)
-          ));
-      }
+      // Use a transaction to update all orders atomically
+      await db.transaction(async (tx) => {
+        // First, set all orders to negative values to avoid unique constraint violations
+        for (const column of validation.data) {
+          await tx
+            .update(projectColumns)
+            .set({ order: -1 - column.order }) // Use negative temporary values
+            .where(and(
+              eq(projectColumns.id, column.id),
+              eq(projectColumns.projectId, projectId)
+            ));
+        }
+
+        // Then, update to the final positive order values
+        for (const column of validation.data) {
+          await tx
+            .update(projectColumns)
+            .set({ order: column.order })
+            .where(and(
+              eq(projectColumns.id, column.id),
+              eq(projectColumns.projectId, projectId)
+            ));
+        }
+      });
 
       // Return updated columns
       const updatedColumns = await db
