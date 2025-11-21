@@ -39,14 +39,24 @@ function Router() {
   const { isAuthenticated, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
-  // Redirect to home if not authenticated and trying to access protected routes
+  // Garantizar navegación correcta según estado de autenticación:
+  // - Si NO está autenticado y trata de acceder a ruta protegida → Redirigir a landing (/)
+  // - Si SÍ está autenticado → Quedarse en la página actual (dashboard, boards, etc.)
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && location !== "/") {
+    if (isLoading) return;
+    
+    if (!isAuthenticated && location !== "/") {
       setLocation("/");
     }
   }, [isLoading, isAuthenticated, location, setLocation]);
 
-  if (isLoading || !isAuthenticated) {
+  // Mientras carga, no renderizar nada para evitar flash de contenido
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
+  }
+
+  // Usuario NO autenticado → Solo mostrar landing page
+  if (!isAuthenticated) {
     return (
       <Switch>
         <Route path="/" component={Landing} />
@@ -55,6 +65,7 @@ function Router() {
     );
   }
 
+  // Usuario autenticado → Mostrar rutas protegidas (dashboard, boards, etc.)
   return (
     <SelectedProjectProvider>
       <MainLayout>
