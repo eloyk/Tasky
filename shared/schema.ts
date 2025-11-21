@@ -195,7 +195,7 @@ export const tasks = pgTable("tasks", {
 });
 
 export const insertTaskSchema = createInsertSchema(tasks, {
-  boardId: z.string().min(1, "Board ID is required"),
+  boardId: z.string().uuid("Board ID must be a valid UUID"),
   dueDate: z.union([z.string(), z.date()]).optional().nullable().transform((val) => {
     if (!val) return null;
     if (val instanceof Date) return val;
