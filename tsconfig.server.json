@@ -21,6 +21,7 @@
     "node_modules",
     "dist",
     "client",
-    "server/migrate-boardid.ts"
+    "server/migrate-boardid.ts",
+    "server/migrate-board-columns.ts"
   ]
 }

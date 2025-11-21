@@ -1,7 +1,4 @@
-import { drizzle } from "drizzle-orm/neon-serverless";
 import { neon } from "@neondatabase/serverless";
-import * as schema from "@shared/schema";
-import { eq } from "drizzle-orm";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -10,7 +7,6 @@ if (!DATABASE_URL) {
 }
 
 const sql = neon(DATABASE_URL);
-const db = drizzle(sql, { schema });
 
 async function migrateToBoardColumns() {
   console.log("🔄 Starting migration: Project Columns → Board Columns");
@@ -81,8 +77,16 @@ async function migrateToBoardColumns() {
 
     console.log(`\n✅ Created ${totalCreated} board columns from ${projectColumns.length} project columns`);
 
-    // Step 4: Update tasks to reference the correct board column
-    console.log("\n📋 Step 4: Updating tasks to reference board columns...");
+    // Step 4: Drop the foreign key constraint on tasks.column_id
+    console.log("\n📋 Step 4: Removing old foreign key constraint...");
+    await sql`
+      ALTER TABLE tasks 
+      DROP CONSTRAINT IF EXISTS tasks_column_id_project_columns_id_fk;
+    `;
+    console.log("✅ Old foreign key constraint removed");
+
+    // Step 5: Update tasks to reference the correct board column
+    console.log("\n📋 Step 5: Updating tasks to reference board columns...");
     
     const tasks = await sql`
       SELECT t.id, t.board_id, t.column_id, pc.name, pc."order"
@@ -118,8 +122,17 @@ async function migrateToBoardColumns() {
     
     console.log(`✅ Updated ${tasksUpdated} tasks`);
 
-    // Step 5: Drop the old project_columns table
-    console.log("\n📋 Step 5: Dropping old project_columns table...");
+    // Step 6: Add new foreign key constraint pointing to board_columns
+    console.log("\n📋 Step 6: Adding new foreign key constraint...");
+    await sql`
+      ALTER TABLE tasks
+      ADD CONSTRAINT tasks_column_id_board_columns_id_fk
+      FOREIGN KEY (column_id) REFERENCES board_columns(id) ON DELETE RESTRICT;
+    `;
+    console.log("✅ New foreign key constraint added");
+
+    // Step 7: Drop the old project_columns table
+    console.log("\n📋 Step 7: Dropping old project_columns table...");
     await sql`DROP TABLE IF EXISTS project_columns CASCADE;`;
     console.log("✅ project_columns table dropped");
 
