@@ -862,6 +862,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/projects/:id/columns/reorder", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id: projectId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Verify project exists first
+      const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Check if user is a member of the project
+      const [membership] = await db
+        .select()
+        .from(projectMembers)
+        .where(and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this project" });
+      }
+
+      // Validate columns array using safeParse
+      const columnsSchema = z.array(z.object({
+        id: z.string(),
+        order: z.number().int().min(0)
+      })).min(1, "At least one column is required");
+      
+      const validation = columnsSchema.safeParse(req.body.columns);
+      
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid column data", 
+          errors: validation.error.errors 
+        });
+      }
+
+      // Update order for each column (verify they belong to this project)
+      for (const column of validation.data) {
+        await db
+          .update(projectColumns)
+          .set({ order: column.order })
+          .where(and(
+            eq(projectColumns.id, column.id),
+            eq(projectColumns.projectId, projectId)
+          ));
+      }
+
+      // Return updated columns
+      const updatedColumns = await db
+        .select()
+        .from(projectColumns)
+        .where(eq(projectColumns.projectId, projectId))
+        .orderBy(projectColumns.order);
+
+      res.json(updatedColumns);
+    } catch (error) {
+      console.error("Error reordering project columns:", error);
+      res.status(500).json({ message: "Failed to reorder columns" });
+    }
+  });
+
   app.patch("/api/projects/:id/columns/:columnId", isAuthenticated, async (req: any, res) => {
     try {
       const { id: projectId, columnId } = req.params;
@@ -981,75 +1050,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting project column:", error);
       res.status(500).json({ message: "Failed to delete column" });
-    }
-  });
-
-  app.patch("/api/projects/:id/columns/reorder", isAuthenticated, async (req: any, res) => {
-    try {
-      const { id: projectId } = req.params;
-      const userEmail = req.user.claims.email;
-      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
-      
-      if (!user) {
-        return res.status(401).json({ message: "User not found" });
-      }
-
-      // Verify project exists first
-      const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-      if (!project) {
-        return res.status(404).json({ message: "Project not found" });
-      }
-
-      // Check if user is a member of the project
-      const [membership] = await db
-        .select()
-        .from(projectMembers)
-        .where(and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, user.id)
-        ));
-
-      if (!membership) {
-        return res.status(403).json({ message: "Not a member of this project" });
-      }
-
-      // Validate columns array using safeParse
-      const columnsSchema = z.array(z.object({
-        id: z.string(),
-        order: z.number().int().min(0)
-      })).min(1, "At least one column is required");
-      
-      const validation = columnsSchema.safeParse(req.body.columns);
-      
-      if (!validation.success) {
-        return res.status(400).json({ 
-          message: "Invalid column data", 
-          errors: validation.error.errors 
-        });
-      }
-
-      // Update order for each column (verify they belong to this project)
-      for (const column of validation.data) {
-        await db
-          .update(projectColumns)
-          .set({ order: column.order })
-          .where(and(
-            eq(projectColumns.id, column.id),
-            eq(projectColumns.projectId, projectId)
-          ));
-      }
-
-      // Return updated columns
-      const updatedColumns = await db
-        .select()
-        .from(projectColumns)
-        .where(eq(projectColumns.projectId, projectId))
-        .orderBy(projectColumns.order);
-
-      res.json(updatedColumns);
-    } catch (error) {
-      console.error("Error reordering project columns:", error);
-      res.status(500).json({ message: "Failed to reorder columns" });
     }
   });
 
