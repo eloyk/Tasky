@@ -37,6 +37,14 @@ function LegacyBoardsRedirect({ projectId }: { projectId: string }) {
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  // Redirect to home if not authenticated and trying to access protected routes
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && location !== "/") {
+      setLocation("/");
+    }
+  }, [isLoading, isAuthenticated, location, setLocation]);
 
   if (isLoading || !isAuthenticated) {
     return (
