@@ -167,7 +167,7 @@ class DatabaseMigrator {
 
   private fixBoardColumnsColumnNameStep(): MigrationStep {
     return {
-      name: 'Corregir board_columns: renombrar project_id → board_id',
+      name: 'Corregir board_columns: renombrar project_id → board_id y recrear datos',
       check: async () => {
         const boardColumnsExists = await this.checkTableExists('board_columns');
         if (!boardColumnsExists) {
@@ -176,15 +176,31 @@ class DatabaseMigrator {
         }
         
         const hasBoardId = await this.checkColumnExists('board_columns', 'board_id');
-        if (hasBoardId) {
-          return true; // Ya tiene board_id, está correcto
+        if (!hasBoardId) {
+          return false; // Necesita renombrar columna
         }
         
-        return false; // Necesita corrección
+        // Verificar si los valores son válidos (existen en boards)
+        const result = await this.pool.query(`
+          SELECT COUNT(*) as invalid_count
+          FROM board_columns bc
+          WHERE NOT EXISTS (
+            SELECT 1 FROM boards b WHERE b.id = bc.board_id
+          )
+        `);
+        
+        const invalidCount = parseInt(result.rows[0].invalid_count);
+        if (invalidCount > 0) {
+          console.log(`  ⚠️  Encontradas ${invalidCount} filas con board_id inválido`);
+          return false; // Necesita recrear datos
+        }
+        
+        return true; // Todo está correcto
       },
       execute: async () => {
-        console.log('  → Corrigiendo nombres de columnas en board_columns...');
+        console.log('  → Corrigiendo board_columns...');
         
+        // Paso 1: Renombrar columna si es necesario
         const hasProjectId = await this.checkColumnExists('board_columns', 'project_id');
         if (hasProjectId) {
           console.log('    • Renombrando project_id → board_id');
@@ -193,7 +209,7 @@ class DatabaseMigrator {
           `);
         }
         
-        // Eliminar constraint antiguo si existe
+        // Paso 2: Eliminar constraints antiguos
         const hasOldConstraint = await this.checkConstraintExists('board_columns', 'project_columns_project_id_projects_id_fk');
         if (hasOldConstraint) {
           console.log('    • Eliminando constraint antiguo');
@@ -202,7 +218,66 @@ class DatabaseMigrator {
           `);
         }
         
-        // Agregar nuevo constraint correcto
+        // Paso 3: Detectar y recrear filas con datos corruptos
+        const corruptedRows = await this.pool.query(`
+          SELECT bc.*, p.id as project_exists
+          FROM board_columns bc
+          LEFT JOIN boards b ON b.id = bc.board_id
+          LEFT JOIN projects p ON p.id = bc.board_id
+          WHERE b.id IS NULL
+        `);
+        
+        if (corruptedRows.rows.length > 0) {
+          console.log(`    • Encontradas ${corruptedRows.rows.length} filas corruptas, recreando...`);
+          
+          // Obtener todas las columnas únicas (por project_id que está guardado como board_id)
+          const uniqueColumns = await this.pool.query(`
+            SELECT DISTINCT ON (board_id, name, "order") 
+              board_id as project_id, name, "order", color
+            FROM board_columns
+            WHERE NOT EXISTS (
+              SELECT 1 FROM boards WHERE id = board_columns.board_id
+            )
+            ORDER BY board_id, name, "order"
+          `);
+          
+          console.log(`    • Procesando ${uniqueColumns.rows.length} columnas únicas...`);
+          
+          for (const column of uniqueColumns.rows) {
+            // Obtener todos los boards de este proyecto
+            const boards = await this.pool.query(
+              `SELECT id FROM boards WHERE project_id = $1`,
+              [column.project_id]
+            );
+            
+            if (boards.rows.length === 0) {
+              console.log(`    ⚠️  No hay boards para project ${column.project_id}, omitiendo columna "${column.name}"`);
+              continue;
+            }
+            
+            // Crear la columna para cada board
+            for (const board of boards.rows) {
+              await this.pool.query(`
+                INSERT INTO board_columns (board_id, name, "order", color)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT DO NOTHING
+              `, [board.id, column.name, column.order, column.color]);
+            }
+            
+            console.log(`    ✓ Recreada columna "${column.name}" para ${boards.rows.length} board(s)`);
+          }
+          
+          // Eliminar filas corruptas
+          console.log('    • Eliminando filas corruptas originales...');
+          await this.pool.query(`
+            DELETE FROM board_columns
+            WHERE NOT EXISTS (
+              SELECT 1 FROM boards WHERE id = board_columns.board_id
+            )
+          `);
+        }
+        
+        // Paso 4: Agregar constraint correcto
         const hasNewConstraint = await this.checkConstraintExists('board_columns', 'board_columns_board_id_boards_id_fk');
         if (!hasNewConstraint) {
           console.log('    • Agregando constraint correcto');
