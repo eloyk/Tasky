@@ -8,13 +8,13 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { Task, ProjectColumn } from "@shared/schema";
+import { Task, BoardColumn } from "@shared/schema";
 import { KanbanColumn } from "./KanbanColumn";
 import { TaskCard } from "./TaskCard";
 
 interface KanbanBoardProps {
   tasks: Task[];
-  columns: ProjectColumn[];
+  columns: BoardColumn[];
   onTaskMove: (taskId: string, newColumnId: string) => void;
   onTaskClick: (task: Task) => void;
 }

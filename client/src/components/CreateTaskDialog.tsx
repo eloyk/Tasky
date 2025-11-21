@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
-import { insertTaskSchema, type InsertTask, type Project, type ProjectColumn } from "@shared/schema";
+import { insertTaskSchema, type InsertTask, type Project, type BoardColumn } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
@@ -94,12 +94,10 @@ export function CreateTaskDialog({
   // Observar el projectId seleccionado para cargar las columnas dinámicamente
   const selectedProjectId = providedProjectId || form.watch("projectId");
 
-  // Obtener columnas - si tenemos boardId usar ese endpoint, sino usar el del proyecto
-  const { data: projectColumns = [], isLoading: isLoadingColumns } = useQuery<ProjectColumn[]>({
-    queryKey: providedBoardId 
-      ? ["/api/boards", providedBoardId, "columns"]
-      : ["/api/projects", selectedProjectId, "columns"],
-    enabled: providedBoardId ? !!providedBoardId : !!selectedProjectId,
+  // Obtener columnas del board
+  const { data: projectColumns = [], isLoading: isLoadingColumns } = useQuery<BoardColumn[]>({
+    queryKey: ["/api/boards", providedBoardId, "columns"],
+    enabled: !!providedBoardId,
   });
 
   // Establecer el projectId proporcionado

@@ -5,7 +5,7 @@ import { ArrowLeft, Plus, Settings } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import type { Board, ProjectColumn, Task, InsertTask } from "@shared/schema";
+import type { Board, BoardColumn, Task, InsertTask} from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -27,7 +27,7 @@ export default function BoardView() {
     enabled: !!boardId,
   });
 
-  const { data: columns = [], isLoading: columnsLoading } = useQuery<ProjectColumn[]>({
+  const { data: columns = [], isLoading: columnsLoading } = useQuery<BoardColumn[]>({
     queryKey: ["/api/boards", boardId, "columns"],
     enabled: !!boardId,
   });

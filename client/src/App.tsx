@@ -13,7 +13,6 @@ import Organizations from "@/pages/organizations";
 import Projects from "@/pages/projects";
 import Boards from "@/pages/boards";
 import BoardView from "@/pages/board-view";
-import ProjectColumns from "@/pages/project-columns";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
@@ -60,7 +59,6 @@ function Router() {
           </Route>
           <Route path="/boards" component={Boards} />
           <Route path="/boards/:id" component={BoardView} />
-          <Route path="/projects/:id/columns" component={ProjectColumns} />
           <Route path="/settings" component={Settings} />
           <Route component={NotFound} />
         </Switch>

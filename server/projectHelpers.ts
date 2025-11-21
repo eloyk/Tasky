@@ -1,26 +1,26 @@
 import { db } from "./db.js";
-import { projectColumns, type InsertProjectColumn } from "../shared/schema.js";
+import { boardColumns, type InsertBoardColumn } from "../shared/schema.js";
 
 /**
- * Crea las columnas por defecto para un nuevo proyecto
+ * Crea las columnas por defecto para un nuevo board
  * Columnas: Pendiente, En Progreso, Completada
  */
-export async function createDefaultProjectColumns(projectId: string): Promise<void> {
-  const defaultColumns: Omit<InsertProjectColumn, "id" | "createdAt">[] = [
+export async function createDefaultBoardColumns(boardId: string): Promise<void> {
+  const defaultColumns: Omit<InsertBoardColumn, "id" | "createdAt">[] = [
     {
-      projectId,
+      boardId,
       name: "Pendiente",
       order: 0,
       color: "#94a3b8", // Gris azulado
     },
     {
-      projectId,
+      boardId,
       name: "En Progreso",
       order: 1,
       color: "#60a5fa", // Azul
     },
     {
-      projectId,
+      boardId,
       name: "Completada",
       order: 2,
       color: "#34d399", // Verde
@@ -28,7 +28,7 @@ export async function createDefaultProjectColumns(projectId: string): Promise<vo
   ];
 
   // Insertar todas las columnas
-  await db.insert(projectColumns).values(defaultColumns);
+  await db.insert(boardColumns).values(defaultColumns);
   
-  console.log(`[projectHelpers] Created ${defaultColumns.length} default columns for project: ${projectId}`);
+  console.log(`[projectHelpers] Created ${defaultColumns.length} default columns for board: ${boardId}`);
 }

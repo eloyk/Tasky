@@ -16,7 +16,7 @@ import {
   insertProjectSchema,
   insertOrganizationMemberSchema,
   insertProjectMemberSchema,
-  insertProjectColumnSchema,
+  insertBoardColumnSchema,
   insertBoardSchema,
   users,
   organizations,
@@ -25,7 +25,7 @@ import {
   taskRelationships,
   organizationMembers,
   projectMembers,
-  projectColumns,
+  boardColumns,
   boards,
   OrganizationRole,
   ProjectRole
@@ -33,7 +33,7 @@ import {
 import { db } from "./db.js";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { createDefaultProjectColumns } from "./projectHelpers.js";
+import { createDefaultBoardColumns } from "./projectHelpers.js";
 import type { Task, Board, Project } from "../shared/schema.js";
 
 // Helper function to verify user has access to a task
@@ -336,19 +336,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Task not found" });
       }
 
-      // Verify that the target column belongs to the same project as the task
+      // Verify that the target column belongs to the same board as the task
       const [targetColumn] = await db
         .select()
-        .from(projectColumns)
-        .where(eq(projectColumns.id, columnId));
+        .from(boardColumns)
+        .where(eq(boardColumns.id, columnId));
 
       if (!targetColumn) {
         return res.status(404).json({ message: "Column not found" });
       }
 
-      // Verify column belongs to the same project as the task
-      if (targetColumn.projectId !== oldTask.projectId) {
-        return res.status(400).json({ message: "Column does not belong to task's project" });
+      // Verify column belongs to the same board as the task
+      if (targetColumn.boardId !== oldTask.boardId) {
+        return res.status(400).json({ message: "Column does not belong to task's board" });
       }
 
       const task = await storage.updateTaskColumn(id, columnId);
@@ -721,9 +721,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: 'admin',
       });
 
-      // Create default columns for the project
-      await createDefaultProjectColumns(project.id);
-
       res.json(project);
     } catch (error) {
       console.error("Error creating project:", error);
@@ -767,9 +764,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/projects/:id/columns", isAuthenticated, async (req: any, res) => {
+  app.get("/api/boards/:id/columns", isAuthenticated, async (req: any, res) => {
     try {
-      const { id: projectId } = req.params;
+      const { id: boardId } = req.params;
       const userEmail = req.user.claims.email;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
@@ -777,12 +774,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Check if user is a member of the project
+      // Verify board exists and get its project
+      const [board] = await db.select().from(boards).where(eq(boards.id, boardId));
+      if (!board) {
+        return res.status(404).json({ message: "Board not found" });
+      }
+
+      // Check if user is a member of the board's project
       const [membership] = await db
         .select()
         .from(projectMembers)
         .where(and(
-          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.projectId, board.projectId),
           eq(projectMembers.userId, user.id)
         ));
 
@@ -790,23 +793,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Not a member of this project" });
       }
 
-      // Get columns for this project ordered by order field
+      // Get columns for this board ordered by order field
       const columns = await db
         .select()
-        .from(projectColumns)
-        .where(eq(projectColumns.projectId, projectId))
-        .orderBy(projectColumns.order);
+        .from(boardColumns)
+        .where(eq(boardColumns.boardId, boardId))
+        .orderBy(boardColumns.order);
 
       res.json(columns);
     } catch (error) {
-      console.error("Error fetching project columns:", error);
-      res.status(500).json({ message: "Failed to fetch project columns" });
+      console.error("Error fetching board columns:", error);
+      res.status(500).json({ message: "Failed to fetch board columns" });
     }
   });
 
-  app.post("/api/projects/:id/columns", isAuthenticated, async (req: any, res) => {
+  app.post("/api/boards/:id/columns", isAuthenticated, async (req: any, res) => {
     try {
-      const { id: projectId } = req.params;
+      const { id: boardId } = req.params;
       const userEmail = req.user.claims.email;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
@@ -814,18 +817,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Verify project exists first
-      const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-      if (!project) {
-        return res.status(404).json({ message: "Project not found" });
+      // Verify board exists and get its project
+      const [board] = await db.select().from(boards).where(eq(boards.id, boardId));
+      if (!board) {
+        return res.status(404).json({ message: "Board not found" });
       }
 
-      // Check if user is a member of the project
+      // Check if user is a member of the board's project
       const [membership] = await db
         .select()
         .from(projectMembers)
         .where(and(
-          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.projectId, board.projectId),
           eq(projectMembers.userId, user.id)
         ));
 
@@ -835,14 +838,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get max order to place new column at the end
       const maxOrder = await db
-        .select({ maxOrder: sql<number>`COALESCE(MAX(${projectColumns.order}), -1)` })
-        .from(projectColumns)
-        .where(eq(projectColumns.projectId, projectId));
+        .select({ maxOrder: sql<number>`COALESCE(MAX(${boardColumns.order}), -1)` })
+        .from(boardColumns)
+        .where(eq(boardColumns.boardId, boardId));
 
       // Validate input with Zod schema using safeParse
-      const validation = insertProjectColumnSchema.safeParse({
+      const validation = insertBoardColumnSchema.safeParse({
         name: req.body.name,
-        projectId: projectId,
+        boardId: boardId,
         order: (maxOrder[0]?.maxOrder ?? -1) + 1,
       });
 
@@ -853,19 +856,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const [newColumn] = await db.insert(projectColumns).values(validation.data).returning();
+      const [newColumn] = await db.insert(boardColumns).values(validation.data).returning();
 
       res.json(newColumn);
     } catch (error) {
-      console.error("Error creating project column:", error);
+      console.error("Error creating board column:", error);
       res.status(500).json({ message: "Failed to create column" });
     }
   });
 
-  app.patch("/api/projects/:id/columns/reorder", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/boards/:id/columns/reorder", isAuthenticated, async (req: any, res) => {
     try {
-      const { id: projectId } = req.params;
-      console.log("[REORDER] Request received for project:", projectId);
+      const { id: boardId } = req.params;
+      console.log("[REORDER] Request received for board:", boardId);
       console.log("[REORDER] Request body:", JSON.stringify(req.body, null, 2));
       
       const userEmail = req.user.claims.email;
@@ -876,24 +879,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Verify project exists first
-      const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-      if (!project) {
-        console.error("[REORDER] Project not found:", projectId);
-        return res.status(404).json({ message: "Project not found" });
+      // Verify board exists and get its project
+      const [board] = await db.select().from(boards).where(eq(boards.id, boardId));
+      if (!board) {
+        console.error("[REORDER] Board not found:", boardId);
+        return res.status(404).json({ message: "Board not found" });
       }
 
-      // Check if user is a member of the project
+      // Check if user is a member of the board's project
       const [membership] = await db
         .select()
         .from(projectMembers)
         .where(and(
-          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.projectId, board.projectId),
           eq(projectMembers.userId, user.id)
         ));
 
       if (!membership) {
-        console.error("[REORDER] User not a member:", user.id, projectId);
+        console.error("[REORDER] User not a member:", user.id, board.projectId);
         return res.status(403).json({ message: "Not a member of this project" });
       }
 
@@ -920,22 +923,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // First, set all orders to negative values to avoid unique constraint violations
         for (const column of validation.data) {
           await tx
-            .update(projectColumns)
+            .update(boardColumns)
             .set({ order: -1 - column.order }) // Use negative temporary values
             .where(and(
-              eq(projectColumns.id, column.id),
-              eq(projectColumns.projectId, projectId)
+              eq(boardColumns.id, column.id),
+              eq(boardColumns.boardId, boardId)
             ));
         }
 
         // Then, update to the final positive order values
         for (const column of validation.data) {
           await tx
-            .update(projectColumns)
+            .update(boardColumns)
             .set({ order: column.order })
             .where(and(
-              eq(projectColumns.id, column.id),
-              eq(projectColumns.projectId, projectId)
+              eq(boardColumns.id, column.id),
+              eq(boardColumns.boardId, boardId)
             ));
         }
       });
@@ -943,22 +946,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Return updated columns
       const updatedColumns = await db
         .select()
-        .from(projectColumns)
-        .where(eq(projectColumns.projectId, projectId))
-        .orderBy(projectColumns.order);
+        .from(boardColumns)
+        .where(eq(boardColumns.boardId, boardId))
+        .orderBy(boardColumns.order);
 
       console.log("[REORDER] Success! Updated columns:", updatedColumns.length);
       res.json(updatedColumns);
     } catch (error) {
-      console.error("[REORDER] Error reordering project columns:", error);
+      console.error("[REORDER] Error reordering board columns:", error);
       console.error("[REORDER] Error stack:", (error as Error).stack);
       res.status(500).json({ message: "Failed to reorder columns" });
     }
   });
 
-  app.patch("/api/projects/:id/columns/:columnId", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/boards/:id/columns/:columnId", isAuthenticated, async (req: any, res) => {
     try {
-      const { id: projectId, columnId } = req.params;
+      const { id: boardId, columnId } = req.params;
       const userEmail = req.user.claims.email;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
@@ -969,24 +972,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Verify column exists first
       const [existingColumn] = await db
         .select()
-        .from(projectColumns)
-        .where(eq(projectColumns.id, columnId));
+        .from(boardColumns)
+        .where(eq(boardColumns.id, columnId));
 
       if (!existingColumn) {
         return res.status(404).json({ message: "Column not found" });
       }
 
-      // Verify column belongs to the project
-      if (existingColumn.projectId !== projectId) {
-        return res.status(404).json({ message: "Column does not belong to this project" });
+      // Verify column belongs to the board
+      if (existingColumn.boardId !== boardId) {
+        return res.status(404).json({ message: "Column does not belong to this board" });
       }
 
-      // Check if user is a member of the project
+      // Verify board exists and get its project
+      const [board] = await db.select().from(boards).where(eq(boards.id, boardId));
+      if (!board) {
+        return res.status(404).json({ message: "Board not found" });
+      }
+
+      // Check if user is a member of the board's project
       const [membership] = await db
         .select()
         .from(projectMembers)
         .where(and(
-          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.projectId, board.projectId),
           eq(projectMembers.userId, user.id)
         ));
 
@@ -1006,21 +1015,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const [updated] = await db
-        .update(projectColumns)
+        .update(boardColumns)
         .set({ name: validation.data })
-        .where(eq(projectColumns.id, columnId))
+        .where(eq(boardColumns.id, columnId))
         .returning();
 
       res.json(updated);
     } catch (error) {
-      console.error("Error updating project column:", error);
+      console.error("Error updating board column:", error);
       res.status(500).json({ message: "Failed to update column" });
     }
   });
 
-  app.delete("/api/projects/:id/columns/:columnId", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/boards/:id/columns/:columnId", isAuthenticated, async (req: any, res) => {
     try {
-      const { id: projectId, columnId } = req.params;
+      const { id: boardId, columnId } = req.params;
       const userEmail = req.user.claims.email;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
@@ -1031,24 +1040,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Verify column exists first
       const [columnToDelete] = await db
         .select()
-        .from(projectColumns)
-        .where(eq(projectColumns.id, columnId));
+        .from(boardColumns)
+        .where(eq(boardColumns.id, columnId));
 
       if (!columnToDelete) {
         return res.status(404).json({ message: "Column not found" });
       }
 
-      // Verify column belongs to the project
-      if (columnToDelete.projectId !== projectId) {
-        return res.status(404).json({ message: "Column does not belong to this project" });
+      // Verify column belongs to the board
+      if (columnToDelete.boardId !== boardId) {
+        return res.status(404).json({ message: "Column does not belong to this board" });
       }
 
-      // Check if user is a member of the project
+      // Verify board exists and get its project
+      const [board] = await db.select().from(boards).where(eq(boards.id, boardId));
+      if (!board) {
+        return res.status(404).json({ message: "Board not found" });
+      }
+
+      // Check if user is a member of the board's project
       const [membership] = await db
         .select()
         .from(projectMembers)
         .where(and(
-          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.projectId, board.projectId),
           eq(projectMembers.userId, user.id)
         ));
 
@@ -1068,12 +1083,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await db
-        .delete(projectColumns)
-        .where(eq(projectColumns.id, columnId));
+        .delete(boardColumns)
+        .where(eq(boardColumns.id, columnId));
 
       res.json({ message: "Column deleted successfully" });
     } catch (error) {
-      console.error("Error deleting project column:", error);
+      console.error("Error deleting board column:", error);
       res.status(500).json({ message: "Failed to delete column" });
     }
   });
@@ -1688,6 +1703,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdById: user.id,
       });
 
+      // Create default columns for the new board
+      await createDefaultBoardColumns(board.id);
+
       res.json(board);
     } catch (error) {
       console.error("Error creating board:", error);
@@ -1785,12 +1803,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Get columns for this board's project
+      // Get columns for this board
       const columns = await db
         .select()
-        .from(projectColumns)
-        .where(eq(projectColumns.projectId, board.projectId))
-        .orderBy(projectColumns.order);
+        .from(boardColumns)
+        .where(eq(boardColumns.boardId, boardId))
+        .orderBy(boardColumns.order);
 
       res.json(columns);
     } catch (error) {

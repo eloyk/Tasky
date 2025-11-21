@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Settings, Plus, Trash2, GripVertical, Pencil } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Board, ProjectColumn } from "@shared/schema";
+import type { Board, BoardColumn } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import {
   DndContext,
@@ -44,8 +44,8 @@ import {
 } from "@/components/ui/alert-dialog";
 
 interface SortableColumnItemProps {
-  column: ProjectColumn;
-  onEdit: (column: ProjectColumn) => void;
+  column: BoardColumn;
+  onEdit: (column: BoardColumn) => void;
   onDelete: (columnId: string) => void;
 }
 
@@ -108,9 +108,9 @@ interface ConfigureColumnsDialogProps {
 
 export function ConfigureColumnsDialog({ board, open, onOpenChange }: ConfigureColumnsDialogProps) {
   const [newColumnName, setNewColumnName] = useState("");
-  const [editingColumn, setEditingColumn] = useState<ProjectColumn | null>(null);
+  const [editingColumn, setEditingColumn] = useState<BoardColumn | null>(null);
   const [deleteColumnId, setDeleteColumnId] = useState<string | null>(null);
-  const [localColumns, setLocalColumns] = useState<ProjectColumn[]>([]);
+  const [localColumns, setLocalColumns] = useState<BoardColumn[]>([]);
   const { toast } = useToast();
 
   const sensors = useSensors(
@@ -120,7 +120,7 @@ export function ConfigureColumnsDialog({ board, open, onOpenChange }: ConfigureC
     })
   );
 
-  const { data: columns = [], isLoading } = useQuery<ProjectColumn[]>({
+  const { data: columns = [], isLoading } = useQuery<BoardColumn[]>({
     queryKey: ["/api/boards", board.id, "columns"],
     enabled: open,
   });
@@ -131,7 +131,7 @@ export function ConfigureColumnsDialog({ board, open, onOpenChange }: ConfigureC
 
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
-      return await apiRequest("POST", `/api/projects/${board.projectId}/columns`, { name });
+      return await apiRequest("POST", `/api/boards/${board.id}/columns`, { name });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/boards", board.id, "columns"] });
@@ -152,7 +152,7 @@ export function ConfigureColumnsDialog({ board, open, onOpenChange }: ConfigureC
 
   const updateMutation = useMutation({
     mutationFn: async ({ columnId, name }: { columnId: string; name: string }) => {
-      return await apiRequest("PATCH", `/api/projects/${board.projectId}/columns/${columnId}`, { name });
+      return await apiRequest("PATCH", `/api/boards/${board.id}/columns/${columnId}`, { name });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/boards", board.id, "columns"] });
@@ -173,7 +173,7 @@ export function ConfigureColumnsDialog({ board, open, onOpenChange }: ConfigureC
 
   const deleteMutation = useMutation({
     mutationFn: async (columnId: string) => {
-      return await apiRequest("DELETE", `/api/projects/${board.projectId}/columns/${columnId}`, {});
+      return await apiRequest("DELETE", `/api/boards/${board.id}/columns/${columnId}`, {});
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/boards", board.id, "columns"] });
@@ -194,7 +194,7 @@ export function ConfigureColumnsDialog({ board, open, onOpenChange }: ConfigureC
 
   const reorderMutation = useMutation({
     mutationFn: async (reorderedColumns: { id: string; order: number }[]) => {
-      return await apiRequest("PATCH", `/api/projects/${board.projectId}/columns/reorder`, {
+      return await apiRequest("PATCH", `/api/boards/${board.id}/columns/reorder`, {
         columns: reorderedColumns,
       });
     },
