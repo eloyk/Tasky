@@ -5,7 +5,7 @@ import {
   attachments,
   activityLog,
   boards,
-  projectColumns,
+  boardColumns,
   organizationMembers,
   projects,
   type User,
@@ -321,8 +321,8 @@ export class DatabaseStorage implements IStorage {
     if (uniqueColumnIds.length > 0) {
       const columns = await db
         .select()
-        .from(projectColumns)
-        .where(inArray(projectColumns.id, uniqueColumnIds));
+        .from(boardColumns)
+        .where(inArray(boardColumns.id, uniqueColumnIds));
       
       columns.forEach(col => columnsMap.set(col.id, col.name));
     }
@@ -368,12 +368,16 @@ export class DatabaseStorage implements IStorage {
       const completedLast7DaysResult = await db
         .select({ count: sql<number>`cast(count(*) as integer)` })
         .from(tasks)
-        .innerJoin(projectColumns, eq(tasks.columnId, projectColumns.id))
+        .innerJoin(boardColumns, and(
+          eq(tasks.columnId, boardColumns.id),
+          eq(tasks.boardId, boardColumns.boardId)
+        ))
         .where(
           and(
             inArray(tasks.projectId, projectIds),
+            isNotNull(tasks.boardId),
             gte(tasks.updatedAt, sevenDaysAgo),
-            sql`lower(${projectColumns.name}) LIKE '%completad%'`
+            sql`lower(${boardColumns.name}) LIKE '%completad%'`
           )
         );
 

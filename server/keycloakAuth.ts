@@ -10,7 +10,7 @@ import { storage } from "./storage.js";
 import { db } from "./db.js";
 import { organizations, organizationMembers, projects, projectMembers, boards } from "../shared/schema.js";
 import { eq, and } from "drizzle-orm";
-import { createDefaultProjectColumns } from "./projectHelpers.js";
+import { createDefaultBoardColumns } from "./projectHelpers.js";
 
 const getKeycloakConfig = memoize(
   async () => {
@@ -165,7 +165,7 @@ async function upsertUser(claims: any) {
         console.log("[upsertUser] Created default board:", defaultBoard.id);
         
         // Create default columns for the board
-        await createDefaultProjectColumns(defaultBoard.id);
+        await createDefaultBoardColumns(defaultBoard.id);
       }
 
       // Add user to project
