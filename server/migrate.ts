@@ -255,15 +255,29 @@ class DatabaseMigrator {
               continue;
             }
             
-            // Crear la columna para cada board y mapear
+            // Crear o reutilizar columna para cada board
             for (const board of boards.rows) {
-              const newColumnResult = await this.pool.query(`
-                INSERT INTO board_columns (board_id, name, "order", color)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id
-              `, [board.id, oldColumn.name, oldColumn.order, oldColumn.color]);
+              // Verificar si ya existe una columna para este board con el mismo nombre/orden
+              let existingColumn = await this.pool.query(`
+                SELECT id FROM board_columns
+                WHERE board_id = $1 AND name = $2 AND "order" = $3
+                LIMIT 1
+              `, [board.id, oldColumn.name, oldColumn.order]);
               
-              const newColumnId = newColumnResult.rows[0].id;
+              let newColumnId: string;
+              
+              if (existingColumn.rows.length > 0) {
+                // Ya existe, usar ese ID
+                newColumnId = existingColumn.rows[0].id;
+              } else {
+                // No existe, crear nueva
+                const newColumnResult = await this.pool.query(`
+                  INSERT INTO board_columns (board_id, name, "order", color)
+                  VALUES ($1, $2, $3, $4)
+                  RETURNING id
+                `, [board.id, oldColumn.name, oldColumn.order, oldColumn.color]);
+                newColumnId = newColumnResult.rows[0].id;
+              }
               
               // Actualizar tasks de ESTE board que usan la columna corrupta
               await this.pool.query(`
