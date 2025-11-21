@@ -149,25 +149,25 @@ export const insertBoardSchema = createInsertSchema(boards).omit({
 export type InsertBoard = z.infer<typeof insertBoardSchema>;
 export type Board = typeof boards.$inferSelect;
 
-// Project columns table - columnas personalizables para cada proyecto
-export const projectColumns = pgTable("project_columns", {
+// Board columns table - columnas personalizables para cada tablero
+export const boardColumns = pgTable("board_columns", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  boardId: varchar("board_id").notNull().references(() => boards.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 100 }).notNull(),
   order: integer("order").notNull(),
   color: varchar("color", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
-  uniqueProjectOrder: uniqueIndex("unique_project_order").on(table.projectId, table.order),
+  uniqueBoardOrder: uniqueIndex("unique_board_order").on(table.boardId, table.order),
 }));
 
-export const insertProjectColumnSchema = createInsertSchema(projectColumns).omit({
+export const insertBoardColumnSchema = createInsertSchema(boardColumns).omit({
   id: true,
   createdAt: true,
 });
 
-export type InsertProjectColumn = z.infer<typeof insertProjectColumnSchema>;
-export type ProjectColumn = typeof projectColumns.$inferSelect;
+export type InsertBoardColumn = z.infer<typeof insertBoardColumnSchema>;
+export type BoardColumn = typeof boardColumns.$inferSelect;
 
 // Task priority enum
 export const TaskPriority = {
@@ -184,7 +184,7 @@ export const tasks = pgTable("tasks", {
   title: text("title").notNull(),
   description: text("description"),
   boardId: varchar("board_id").notNull().references(() => boards.id, { onDelete: "cascade" }),
-  columnId: varchar("column_id").notNull().references(() => projectColumns.id, { onDelete: "restrict" }),
+  columnId: varchar("column_id").notNull().references(() => boardColumns.id, { onDelete: "restrict" }),
   priority: varchar("priority", { length: 20 }).notNull().default(TaskPriority.MEDIUM),
   dueDate: timestamp("due_date"),
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
