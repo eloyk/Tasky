@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage.js";
 import { setupAuth, isAuthenticated } from "./keycloakAuth.js";
@@ -7,6 +8,10 @@ import {
   ObjectNotFoundError,
 } from "./objectStorage.js";
 import { ObjectPermission, getObjectAclPolicy, setObjectAclPolicy } from "./objectAcl.js";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs/promises";
 import { 
   insertTaskSchema, 
   insertCommentSchema, 
@@ -236,8 +241,72 @@ async function verifyProjectAccess(projectId: string, userId: string): Promise<{
   };
 }
 
+// Configuración de multer para almacenamiento local
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(__dirname, '../uploads');
+
+const profileImageStorage = multer.diskStorage({
+  destination: async (req, file, cb) => {
+    const dest = path.join(uploadsDir, 'profile-images');
+    try {
+      await fs.mkdir(dest, { recursive: true });
+      cb(null, dest);
+    } catch (error) {
+      cb(error as Error, dest);
+    }
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `profile-${uniqueSuffix}${ext}`);
+  }
+});
+
+const attachmentStorage = multer.diskStorage({
+  destination: async (req, file, cb) => {
+    const dest = path.join(uploadsDir, 'attachments');
+    try {
+      await fs.mkdir(dest, { recursive: true });
+      cb(null, dest);
+    } catch (error) {
+      cb(error as Error, dest);
+    }
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    cb(null, `${uniqueSuffix}-${safeName}`);
+  }
+});
+
+const uploadProfileImage = multer({
+  storage: profileImageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+const uploadAttachment = multer({
+  storage: attachmentStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+});
+
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
+  
+  // Servir archivos estáticos desde el directorio uploads
+  app.use('/uploads', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    next();
+  });
+  app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
@@ -2002,8 +2071,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========================================
 
   // Get profile image upload URL
-  app.get("/api/user/profile-image/upload-url", isAuthenticated, async (req: any, res) => {
+  // Upload profile image (local storage)
+  app.post("/api/user/profile-image/upload", isAuthenticated, uploadProfileImage.single('image'), async (req: any, res) => {
     try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
       const userEmail = req.user.claims.email;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
@@ -2011,13 +2085,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const objectStorageService = new ObjectStorageService();
-      const uploadData = await objectStorageService.getProfileImageUploadURL();
+      // Construir URL pública del archivo
+      const imageUrl = `/uploads/profile-images/${req.file.filename}`;
       
-      res.json(uploadData);
+      res.json({ imageUrl });
     } catch (error) {
-      console.error("Error getting profile image upload URL:", error);
-      res.status(500).json({ message: "Failed to get upload URL" });
+      console.error("Error uploading profile image:", error);
+      res.status(500).json({ message: "Failed to upload image" });
     }
   });
 

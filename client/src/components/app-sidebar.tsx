@@ -1,4 +1,4 @@
-import { Kanban, Home } from "lucide-react";
+import { Kanban, Home, Settings } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -22,6 +22,11 @@ const menuItems = [
     title: "Tableros",
     url: "/boards",
     icon: Kanban,
+  },
+  {
+    title: "Configuración",
+    url: "/settings",
+    icon: Settings,
   },
 ];
 

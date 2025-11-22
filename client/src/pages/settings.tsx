@@ -94,26 +94,22 @@ export default function Settings() {
     setIsUploading(true);
 
     try {
-      const uploadUrlResponse = await fetch('/api/user/profile-image/upload-url');
-      if (!uploadUrlResponse.ok) {
-        throw new Error('No se pudo obtener URL de carga');
-      }
+      const formData = new FormData();
+      formData.append('image', file);
 
-      const { uploadURL, publicUrl } = await uploadUrlResponse.json();
-
-      const uploadResponse = await fetch(uploadURL, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type,
-        },
+      const uploadResponse = await fetch('/api/user/profile-image/upload', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
       });
 
       if (!uploadResponse.ok) {
         throw new Error('Error al subir la imagen');
       }
 
-      form.setValue('profileImageUrl', publicUrl, { shouldDirty: true });
+      const { imageUrl } = await uploadResponse.json();
+
+      form.setValue('profileImageUrl', imageUrl, { shouldDirty: true });
       
       toast({
         title: "Imagen cargada",
