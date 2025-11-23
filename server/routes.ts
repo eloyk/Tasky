@@ -905,7 +905,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
         .where(eq(projectMembers.userId, user.id));
 
-      res.json(userProjects);
+      // Add team count for each project
+      const projectsWithCounts = await Promise.all(
+        userProjects.map(async (project) => {
+          const teamCount = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(projectTeams)
+            .where(eq(projectTeams.projectId, project.id));
+          
+          return {
+            ...project,
+            teamCount: teamCount[0]?.count || 0,
+          };
+        })
+      );
+
+      res.json(projectsWithCounts);
     } catch (error) {
       console.error("Error fetching projects:", error);
       res.status(500).json({ message: "Failed to fetch projects" });
@@ -1870,6 +1885,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Board endpoints
+  app.get("/api/boards", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Get all boards from projects where user is a member
+      const userBoards = await db
+        .select({
+          id: boards.id,
+          name: boards.name,
+          description: boards.description,
+          projectId: boards.projectId,
+          createdById: boards.createdById,
+          createdAt: boards.createdAt,
+          updatedAt: boards.updatedAt,
+          projectName: projects.name,
+        })
+        .from(boards)
+        .innerJoin(projects, eq(projects.id, boards.projectId))
+        .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+        .where(eq(projectMembers.userId, user.id));
+
+      // Add team count for each board and format with project info
+      const boardsWithCounts = await Promise.all(
+        userBoards.map(async (board) => {
+          const teamCount = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(boardTeams)
+            .where(eq(boardTeams.boardId, board.id));
+          
+          return {
+            id: board.id,
+            name: board.name,
+            description: board.description,
+            projectId: board.projectId,
+            createdById: board.createdById,
+            createdAt: board.createdAt,
+            updatedAt: board.updatedAt,
+            project: {
+              id: board.projectId,
+              name: board.projectName,
+            },
+            teamCount: teamCount[0]?.count || 0,
+          };
+        })
+      );
+
+      res.json(boardsWithCounts);
+    } catch (error) {
+      console.error("Error fetching boards:", error);
+      res.status(500).json({ message: "Failed to fetch boards" });
+    }
+  });
+
   app.get("/api/projects/:id/boards", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
