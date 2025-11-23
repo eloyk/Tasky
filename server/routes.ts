@@ -942,20 +942,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Get all projects where user is a member
-      const userProjects = await db
-        .select({
-          id: projects.id,
-          name: projects.name,
-          description: projects.description,
-          organizationId: projects.organizationId,
-          createdById: projects.createdById,
-          createdAt: projects.createdAt,
-          updatedAt: projects.updatedAt,
-        })
-        .from(projects)
-        .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-        .where(eq(projectMembers.userId, user.id));
+      // Get user's organization membership
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(eq(organizationMembers.userId, user.id))
+        .limit(1);
+
+      if (!membership) {
+        return res.json([]);
+      }
+
+      let userProjects;
+
+      // Owners and Admins see ALL projects in their organization
+      if (membership.role === OrganizationRole.OWNER || membership.role === OrganizationRole.ADMIN) {
+        userProjects = await db
+          .select({
+            id: projects.id,
+            name: projects.name,
+            description: projects.description,
+            organizationId: projects.organizationId,
+            createdById: projects.createdById,
+            createdAt: projects.createdAt,
+            updatedAt: projects.updatedAt,
+          })
+          .from(projects)
+          .where(eq(projects.organizationId, membership.organizationId));
+      } else {
+        // Regular members only see projects where they are explicitly added
+        userProjects = await db
+          .select({
+            id: projects.id,
+            name: projects.name,
+            description: projects.description,
+            organizationId: projects.organizationId,
+            createdById: projects.createdById,
+            createdAt: projects.createdAt,
+            updatedAt: projects.updatedAt,
+          })
+          .from(projects)
+          .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+          .where(eq(projectMembers.userId, user.id));
+      }
 
       // Add team count for each project
       const projectsWithCounts = await Promise.all(
@@ -1946,22 +1975,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Get all boards from projects where user is a member
-      const userBoards = await db
-        .select({
-          id: boards.id,
-          name: boards.name,
-          description: boards.description,
-          projectId: boards.projectId,
-          createdById: boards.createdById,
-          createdAt: boards.createdAt,
-          updatedAt: boards.updatedAt,
-          projectName: projects.name,
-        })
-        .from(boards)
-        .innerJoin(projects, eq(projects.id, boards.projectId))
-        .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-        .where(eq(projectMembers.userId, user.id));
+      // Get user's organization membership
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(eq(organizationMembers.userId, user.id))
+        .limit(1);
+
+      if (!membership) {
+        return res.json([]);
+      }
+
+      let userBoards;
+
+      // Owners and Admins see ALL boards in their organization
+      if (membership.role === OrganizationRole.OWNER || membership.role === OrganizationRole.ADMIN) {
+        userBoards = await db
+          .select({
+            id: boards.id,
+            name: boards.name,
+            description: boards.description,
+            projectId: boards.projectId,
+            createdById: boards.createdById,
+            createdAt: boards.createdAt,
+            updatedAt: boards.updatedAt,
+            projectName: projects.name,
+            organizationId: projects.organizationId,
+          })
+          .from(boards)
+          .innerJoin(projects, eq(projects.id, boards.projectId))
+          .where(eq(projects.organizationId, membership.organizationId));
+      } else {
+        // Regular members only see boards from projects they are explicitly added to
+        userBoards = await db
+          .select({
+            id: boards.id,
+            name: boards.name,
+            description: boards.description,
+            projectId: boards.projectId,
+            createdById: boards.createdById,
+            createdAt: boards.createdAt,
+            updatedAt: boards.updatedAt,
+            projectName: projects.name,
+            organizationId: projects.organizationId,
+          })
+          .from(boards)
+          .innerJoin(projects, eq(projects.id, boards.projectId))
+          .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+          .where(eq(projectMembers.userId, user.id));
+      }
 
       // Add team count for each board and format with project info
       const boardsWithCounts = await Promise.all(
