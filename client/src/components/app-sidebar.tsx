@@ -1,4 +1,4 @@
-import { Kanban, Home, Settings, Users } from "lucide-react";
+import { Kanban, Home, Settings, Users, Shield } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -36,6 +36,11 @@ const userMenuItems = [
 
 const adminMenuItems = [
   {
+    title: "Centro de Control",
+    url: "/admin",
+    icon: Shield,
+  },
+  {
     title: "Equipos",
     url: "/teams",
     icon: Users,
@@ -49,7 +54,7 @@ export function AppSidebar() {
     queryKey: ['/api/auth/user'],
   });
 
-  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'OWNER';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'owner';
 
   return (
     <Sidebar>
