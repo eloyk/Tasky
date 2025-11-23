@@ -249,17 +249,22 @@ export default function TeamsPage() {
   ) || [];
 
   const getUserDisplayName = (user: any) => {
+    if (!user) return "Usuario desconocido";
     if (user.firstName && user.lastName) {
       return `${user.firstName} ${user.lastName}`;
     }
-    return user.email;
+    return user.email || "Usuario sin email";
   };
 
   const getUserInitials = (user: any) => {
+    if (!user) return "?";
     if (user.firstName && user.lastName) {
       return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
     }
-    return user.email[0].toUpperCase();
+    if (user.email && user.email.length > 0) {
+      return user.email[0].toUpperCase();
+    }
+    return "?";
   };
 
   if (teamsLoading) {
@@ -567,7 +572,7 @@ export default function TeamsPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {teamMembers?.map((member) => (
+                  {teamMembers?.filter(member => member.user).map((member) => (
                     <div
                       key={member.id}
                       className="flex items-center justify-between p-3 rounded-md border"
@@ -575,7 +580,7 @@ export default function TeamsPage() {
                     >
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={member.user.profileImageUrl || undefined} />
+                          <AvatarImage src={member.user?.profileImageUrl || undefined} />
                           <AvatarFallback className="text-xs">
                             {getUserInitials(member.user)}
                           </AvatarFallback>
@@ -585,7 +590,7 @@ export default function TeamsPage() {
                             {getUserDisplayName(member.user)}
                           </p>
                           <p className="text-xs text-muted-foreground" data-testid={`text-member-email-${member.userId}`}>
-                            {member.user.email}
+                            {member.user?.email}
                           </p>
                         </div>
                       </div>
