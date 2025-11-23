@@ -45,15 +45,45 @@ import { z } from "zod";
 import { createDefaultBoardColumns } from "./projectHelpers.js";
 import type { Task, Board, Project } from "../shared/schema.js";
 
-// Helper function to verify user has access to a task
-async function verifyTaskAccess(taskId: string, userId: string): Promise<{ task: Task | null; allowed: boolean }> {
-  const taskResult = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+// Helper function to get task with assignee information
+async function getTaskWithAssignee(taskId: string) {
+  const result = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      description: tasks.description,
+      boardId: tasks.boardId,
+      columnId: tasks.columnId,
+      priority: tasks.priority,
+      dueDate: tasks.dueDate,
+      projectId: tasks.projectId,
+      assigneeId: tasks.assigneeId,
+      createdById: tasks.createdById,
+      createdAt: tasks.createdAt,
+      updatedAt: tasks.updatedAt,
+      assignee: {
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        profileImageUrl: users.profileImageUrl,
+      },
+    })
+    .from(tasks)
+    .leftJoin(users, eq(tasks.assigneeId, users.id))
+    .where(eq(tasks.id, taskId))
+    .limit(1);
   
-  if (taskResult.length === 0) {
+  return result.length > 0 ? result[0] : null;
+}
+
+// Helper function to verify user has access to a task
+async function verifyTaskAccess(taskId: string, userId: string): Promise<{ task: any | null; allowed: boolean }> {
+  const task = await getTaskWithAssignee(taskId);
+  
+  if (!task) {
     return { task: null, allowed: false };
   }
-  
-  const task = taskResult[0];
   
   // Get task's project
   const projectResult = await db.select().from(projects).where(eq(projects.id, task.projectId)).limit(1);
@@ -375,9 +405,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const projectIds = userProjects.map(p => p.id);
       
       // CRITICAL: Only return tasks from user's projects (tenant-isolated)
+      // Include assignee information with left join
       const userTasks = await db
-        .select()
+        .select({
+          id: tasks.id,
+          title: tasks.title,
+          description: tasks.description,
+          boardId: tasks.boardId,
+          columnId: tasks.columnId,
+          priority: tasks.priority,
+          dueDate: tasks.dueDate,
+          projectId: tasks.projectId,
+          assigneeId: tasks.assigneeId,
+          createdById: tasks.createdById,
+          createdAt: tasks.createdAt,
+          updatedAt: tasks.updatedAt,
+          assignee: {
+            id: users.id,
+            email: users.email,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            profileImageUrl: users.profileImageUrl,
+          },
+        })
         .from(tasks)
+        .leftJoin(users, eq(tasks.assigneeId, users.id))
         .where(inArray(tasks.projectId, projectIds));
       
       res.json(userTasks);

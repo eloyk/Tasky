@@ -1,12 +1,12 @@
 import { useDroppable } from "@dnd-kit/core";
-import { Task } from "@shared/schema";
+import { TaskWithAssignee } from "@shared/schema";
 import { TaskCard } from "./TaskCard";
 
 interface KanbanColumnProps {
   id: string;
   title: string;
-  tasks: Task[];
-  onTaskClick: (task: Task) => void;
+  tasks: TaskWithAssignee[];
+  onTaskClick: (task: TaskWithAssignee) => void;
 }
 
 export function KanbanColumn({ id, title, tasks, onTaskClick }: KanbanColumnProps) {

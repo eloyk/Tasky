@@ -1,13 +1,13 @@
 import { useRef, useEffect } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { Calendar } from "lucide-react";
-import { Task } from "@shared/schema";
+import { TaskWithAssignee } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { format, isPast } from "date-fns";
 
 interface TaskCardProps {
-  task: Task;
+  task: TaskWithAssignee;
   onClick: () => void;
 }
 
@@ -89,10 +89,16 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
 
         <div className="flex-1" />
 
-        {task.assigneeId && (
-          <Avatar className="w-8 h-8">
+        {task.assignee && (
+          <Avatar className="w-8 h-8" title={
+            task.assignee.firstName && task.assignee.lastName
+              ? `${task.assignee.firstName} ${task.assignee.lastName}`
+              : task.assignee.email
+          }>
             <AvatarFallback className="text-xs bg-primary/10 text-primary">
-              {task.assigneeId.substring(0, 2).toUpperCase()}
+              {task.assignee.firstName && task.assignee.lastName
+                ? `${task.assignee.firstName[0]}${task.assignee.lastName[0]}`.toUpperCase()
+                : task.assignee.email.substring(0, 2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
         )}

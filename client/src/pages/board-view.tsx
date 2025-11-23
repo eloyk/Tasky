@@ -5,7 +5,7 @@ import { ArrowLeft, Plus, Settings } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import type { Board, BoardColumn, Task, InsertTask} from "@shared/schema";
+import type { Board, BoardColumn, TaskWithAssignee, InsertTask} from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -17,7 +17,7 @@ export default function BoardView() {
   const boardId = params.id as string;
   const [, setLocation] = useLocation();
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedTask, setSelectedTask] = useState<TaskWithAssignee | null>(null);
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -36,7 +36,7 @@ export default function BoardView() {
     enabled: !!boardId,
   });
 
-  const { data: tasks = [], isLoading: tasksLoading } = useQuery<Task[]>({
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery<TaskWithAssignee[]>({
     queryKey: [`/api/boards/${boardId}/tasks`],
     enabled: !!boardId,
   });
@@ -53,7 +53,7 @@ export default function BoardView() {
       await queryClient.cancelQueries({ queryKey: [`/api/boards/${boardId}/tasks`] });
 
       // Snapshot previous value (deep clone to ensure safe rollback)
-      const cachedTasks = queryClient.getQueryData<Task[]>([`/api/boards/${boardId}/tasks`]) || [];
+      const cachedTasks = queryClient.getQueryData<TaskWithAssignee[]>([`/api/boards/${boardId}/tasks`]) || [];
       const previousTasks = JSON.parse(JSON.stringify(cachedTasks));
 
       // Optimistically update to the new value
@@ -71,9 +71,10 @@ export default function BoardView() {
         createdById: user?.id || "",
         createdAt: now,
         updatedAt: now,
-      } as unknown as Task;
+        assignee: null,
+      } as unknown as TaskWithAssignee;
       
-      queryClient.setQueryData<Task[]>(
+      queryClient.setQueryData<TaskWithAssignee[]>(
         [`/api/boards/${boardId}/tasks`],
         [...previousTasks, optimisticTask]
       );
@@ -113,17 +114,17 @@ export default function BoardView() {
       await queryClient.cancelQueries({ queryKey: [`/api/boards/${boardId}/tasks`] });
 
       // Snapshot previous value (deep clone to ensure safe rollback)
-      const cachedTasks = queryClient.getQueryData<Task[]>([`/api/boards/${boardId}/tasks`]) || [];
+      const cachedTasks = queryClient.getQueryData<TaskWithAssignee[]>([`/api/boards/${boardId}/tasks`]) || [];
       const previousTasks = JSON.parse(JSON.stringify(cachedTasks));
 
       // Optimistically update task's column and timestamp
       const now = new Date().toISOString();
-      const updatedTasks = previousTasks.map((task: Task) =>
+      const updatedTasks = previousTasks.map((task: TaskWithAssignee) =>
         task.id === taskId 
           ? { ...task, columnId, updatedAt: now as any } 
           : task
       );
-      queryClient.setQueryData<Task[]>([`/api/boards/${boardId}/tasks`], updatedTasks);
+      queryClient.setQueryData<TaskWithAssignee[]>([`/api/boards/${boardId}/tasks`], updatedTasks);
 
       return { previousTasks };
     },

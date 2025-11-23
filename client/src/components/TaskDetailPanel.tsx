@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Calendar, Paperclip, MessageSquare, Trash2, Upload, History } from "lucide-react";
-import { Task, Comment, Attachment, BoardColumn, insertCommentSchema } from "@shared/schema";
+import { Calendar, Paperclip, MessageSquare, Trash2, Upload, History, User } from "lucide-react";
+import { TaskWithAssignee, Comment, Attachment, BoardColumn, insertCommentSchema } from "@shared/schema";
 import DOMPurify from "isomorphic-dompurify";
 
 type ActivityLogWithUser = {
@@ -45,7 +45,7 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 
 interface TaskDetailPanelProps {
-  task: Task | null;
+  task: TaskWithAssignee | null;
   open: boolean;
   onClose: () => void;
   onDelete: (taskId: string) => void;
@@ -231,6 +231,16 @@ export function TaskDetailPanel({ task, open, onClose, onDelete }: TaskDetailPan
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Calendar className="w-4 h-4" />
                     <span className="font-mono">{format(new Date(task.dueDate), "MMM dd, yyyy")}</span>
+                  </div>
+                )}
+                {task.assignee && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <User className="w-4 h-4" />
+                    <span>
+                      {task.assignee.firstName && task.assignee.lastName
+                        ? `${task.assignee.firstName} ${task.assignee.lastName}`
+                        : task.assignee.email}
+                    </span>
                   </div>
                 )}
               </div>

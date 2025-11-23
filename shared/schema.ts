@@ -211,6 +211,17 @@ export const insertTaskSchema = createInsertSchema(tasks, {
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type Task = typeof tasks.$inferSelect;
 
+// Extended type for tasks with assignee information
+export type TaskWithAssignee = Task & {
+  assignee: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    profileImageUrl: string | null;
+  } | null;
+};
+
 // Comments table
 export const comments = pgTable("comments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

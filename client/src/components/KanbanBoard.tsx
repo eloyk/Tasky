@@ -8,19 +8,19 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { Task, BoardColumn } from "@shared/schema";
+import { TaskWithAssignee, BoardColumn } from "@shared/schema";
 import { KanbanColumn } from "./KanbanColumn";
 import { TaskCard } from "./TaskCard";
 
 interface KanbanBoardProps {
-  tasks: Task[];
+  tasks: TaskWithAssignee[];
   columns: BoardColumn[];
   onTaskMove: (taskId: string, newColumnId: string) => void;
-  onTaskClick: (task: Task) => void;
+  onTaskClick: (task: TaskWithAssignee) => void;
 }
 
 export function KanbanBoard({ tasks, columns, onTaskMove, onTaskClick }: KanbanBoardProps) {
-  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [activeTask, setActiveTask] = useState<TaskWithAssignee | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

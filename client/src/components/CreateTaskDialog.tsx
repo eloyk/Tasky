@@ -100,6 +100,12 @@ export function CreateTaskDialog({
     enabled: !!providedBoardId,
   });
 
+  // Obtener usuarios con acceso al board para asignación
+  const { data: boardUsers = [], isLoading: isLoadingUsers } = useQuery<Array<{ id: string; firstName: string | null; lastName: string | null; email: string }>>({
+    queryKey: ["/api/boards", providedBoardId, "users"],
+    enabled: !!providedBoardId,
+  });
+
   // Establecer el projectId proporcionado
   useEffect(() => {
     if (providedProjectId) {
@@ -306,7 +312,39 @@ export function CreateTaskDialog({
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="assigneeId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Asignado a</FormLabel>
+                    <Select 
+                      value={field.value || "unassigned"} 
+                      onValueChange={(value) => field.onChange(value === "unassigned" ? null : value)}
+                      disabled={isLoadingUsers}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-task-assignee">
+                          <SelectValue placeholder="Sin asignar" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Sin asignar</SelectItem>
+                        {boardUsers.map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.firstName && user.lastName 
+                              ? `${user.firstName} ${user.lastName}` 
+                              : user.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="priority"
