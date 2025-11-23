@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Shield, AlertCircle, Users, Plus, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,6 +71,24 @@ interface BoardTeam {
 
 export default function Admin() {
   const { toast } = useToast();
+  const [location] = useLocation();
+  
+  // Leer el parámetro ?tab= del query string
+  const getDefaultTab = () => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const tab = searchParams.get('tab');
+    return (tab === 'organization' || tab === 'teams' || tab === 'projects' || tab === 'boards') 
+      ? tab 
+      : 'teams';
+  };
+  
+  const [activeTab, setActiveTab] = useState(getDefaultTab());
+  
+  // Actualizar la pestaña activa cuando cambia la URL
+  useEffect(() => {
+    setActiveTab(getDefaultTab());
+  }, [location]);
+  
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projectPermissionsOpen, setProjectPermissionsOpen] = useState(false);
   const [addProjectTeamOpen, setAddProjectTeamOpen] = useState(false);
@@ -255,7 +274,7 @@ export default function Admin() {
         </p>
       </div>
 
-      <Tabs defaultValue="teams" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="organization" data-testid="tab-organization">
             Organización

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Settings, Users, X, UserPlus } from "lucide-react";
+import { ArrowLeft, Plus, Settings } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,29 +11,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 import { TaskDetailPanel } from "@/components/TaskDetailPanel";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-
-interface BoardTeam {
-  id: string;
-  boardId: string;
-  teamId: string;
-  permission: string;
-  team: {
-    id: string;
-    name: string;
-    description: string | null;
-    color: string | null;
-  };
-}
-
-interface Team {
-  id: string;
-  name: string;
-  description: string | null;
-  color: string | null;
-}
 
 export default function BoardView() {
   const params = useParams();
@@ -42,10 +19,6 @@ export default function BoardView() {
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
-  const [permissionsOpen, setPermissionsOpen] = useState(false);
-  const [addTeamOpen, setAddTeamOpen] = useState(false);
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
-  const [selectedPermission, setSelectedPermission] = useState<string>("view");
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -68,15 +41,8 @@ export default function BoardView() {
     enabled: !!boardId,
   });
 
-  const { data: boardTeams = [] } = useQuery<BoardTeam[]>({
-    queryKey: ["/api/boards", boardId, "teams"],
-    enabled: !!boardId && permissionsOpen,
-  });
-
-  const { data: allTeams = [] } = useQuery<Team[]>({
-    queryKey: ['/api/organizations', currentUser?.organizationId, 'teams'],
-    enabled: !!currentUser?.organizationId && addTeamOpen,
-  });
+  // Verificar que el usuario es admin o owner para mostrar opciones de configuración
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'owner';
 
   const createTaskMutation = useMutation({
     mutationFn: async (taskData: InsertTask) => {
@@ -204,52 +170,6 @@ export default function BoardView() {
     },
   });
 
-  const addTeamToBoardMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", `/api/boards/${boardId}/teams`, {
-        teamId: selectedTeamId,
-        permission: selectedPermission,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/boards", boardId, "teams"] });
-      setAddTeamOpen(false);
-      setSelectedTeamId("");
-      setSelectedPermission("view");
-      toast({
-        title: "Equipo agregado",
-        description: "El equipo se ha asignado al tablero correctamente.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "No se pudo agregar el equipo al tablero.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const removeTeamFromBoardMutation = useMutation({
-    mutationFn: async (teamId: string) => {
-      return await apiRequest("DELETE", `/api/boards/${boardId}/teams/${teamId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/boards", boardId, "teams"] });
-      toast({
-        title: "Equipo eliminado",
-        description: "El equipo se ha eliminado del tablero correctamente.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "No se pudo eliminar el equipo del tablero.",
-        variant: "destructive",
-      });
-    },
-  });
-
   const handleTaskMove = (taskId: string, newColumnId: string) => {
     moveTaskMutation.mutate({ taskId, columnId: newColumnId });
   };
@@ -332,15 +252,17 @@ export default function BoardView() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setPermissionsOpen(true)}
-              disabled={!board || boardLoading}
-              data-testid="button-board-permissions"
-            >
-              <Users className="w-4 h-4 mr-2" />
-              Permisos
-            </Button>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => setLocation('/admin?tab=boards')}
+                title="Configurar permisos en Admin"
+                data-testid="button-board-admin"
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Configurar
+              </Button>
+            )}
             <Button
               onClick={() => setCreateTaskOpen(true)}
               disabled={!board || boardLoading}
@@ -399,141 +321,6 @@ export default function BoardView() {
           onDelete={handleTaskDelete}
         />
       )}
-
-      <Dialog open={permissionsOpen} onOpenChange={setPermissionsOpen}>
-        <DialogContent className="max-w-2xl" data-testid="dialog-board-permissions">
-          <DialogHeader>
-            <DialogTitle>Permisos del Tablero</DialogTitle>
-            <DialogDescription>
-              Gestiona qué equipos tienen acceso a este tablero y sus niveles de permiso
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setAddTeamOpen(true)}
-              className="w-full"
-              data-testid="button-add-team-to-board"
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Agregar equipo
-            </Button>
-            {boardTeams.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No hay equipos asignados a este tablero. Todos los miembros de la organización pueden acceder.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {boardTeams.map((boardTeam) => (
-                  <div
-                    key={boardTeam.id}
-                    className="flex items-center justify-between p-3 rounded-md border"
-                    data-testid={`board-team-item-${boardTeam.teamId}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {boardTeam.team.color && (
-                        <div
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: boardTeam.team.color }}
-                        />
-                      )}
-                      <div>
-                        <p className="text-sm font-medium" data-testid={`text-team-name-${boardTeam.teamId}`}>
-                          {boardTeam.team.name}
-                        </p>
-                        {boardTeam.team.description && (
-                          <p className="text-xs text-muted-foreground">
-                            {boardTeam.team.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" data-testid={`badge-permission-${boardTeam.teamId}`}>
-                        {boardTeam.permission === 'view' && 'Ver'}
-                        {boardTeam.permission === 'edit' && 'Editar'}
-                        {boardTeam.permission === 'admin' && 'Admin'}
-                      </Badge>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => removeTeamFromBoardMutation.mutate(boardTeam.teamId)}
-                        disabled={removeTeamFromBoardMutation.isPending}
-                        data-testid={`button-remove-team-${boardTeam.teamId}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={addTeamOpen} onOpenChange={setAddTeamOpen}>
-        <DialogContent data-testid="dialog-add-team-to-board">
-          <DialogHeader>
-            <DialogTitle>Agregar equipo al tablero</DialogTitle>
-            <DialogDescription>
-              Selecciona un equipo y el nivel de permiso para este tablero
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Equipo</label>
-              <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
-                <SelectTrigger data-testid="select-team">
-                  <SelectValue placeholder="Selecciona un equipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allTeams
-                    .filter((team) => !boardTeams.some((bt) => bt.teamId === team.id))
-                    .map((team) => (
-                      <SelectItem key={team.id} value={team.id} data-testid={`select-team-option-${team.id}`}>
-                        <div className="flex items-center gap-2">
-                          {team.color && (
-                            <div
-                              className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: team.color }}
-                            />
-                          )}
-                          {team.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Nivel de permiso</label>
-              <Select value={selectedPermission} onValueChange={setSelectedPermission}>
-                <SelectTrigger data-testid="select-permission">
-                  <SelectValue placeholder="Selecciona el nivel de permiso" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="view">Ver - Solo lectura</SelectItem>
-                  <SelectItem value="edit">Editar - Crear y modificar tareas</SelectItem>
-                  <SelectItem value="admin">Admin - Gestión completa</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              onClick={() => addTeamToBoardMutation.mutate()}
-              disabled={!selectedTeamId || addTeamToBoardMutation.isPending}
-              className="w-full"
-              data-testid="button-submit-add-team"
-            >
-              {addTeamToBoardMutation.isPending && (
-                <Settings className="h-4 w-4 animate-spin mr-2" />
-              )}
-              Agregar equipo
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
