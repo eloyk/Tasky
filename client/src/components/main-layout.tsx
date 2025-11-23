@@ -10,18 +10,29 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   const [location] = useLocation();
+  // Usar pathname del navegador para manejar correctamente query strings
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : location;
 
   const getPageTitle = () => {
-    if (location === "/") return "Dashboard";
-    if (location === "/boards" || location.startsWith("/boards/")) return "Tableros";
-    if (location === "/organizations") return "Organizaciones";
-    if (location === "/settings") return "Configuración";
+    if (pathname === "/") return "Dashboard";
+    if (pathname === "/boards" || pathname.startsWith("/boards/")) return "Tableros";
+    if (pathname.startsWith("/organizations")) return "Organizaciones";
+    if (pathname.startsWith("/settings")) return "Configuración";
+    if (pathname.startsWith("/admin")) return "Centro de Control";
     return "Dashboard";
   };
 
   const pageTitle = getPageTitle();
-  const isBoardView = location.startsWith("/boards/");
-  const showProjectSelector = location !== "/" && !isBoardView;
+  const isBoardView = pathname.startsWith("/boards/");
+  
+  // Ocultar ProjectSelector en páginas específicas
+  const shouldHideProjectSelector = 
+    pathname === "/" ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/organizations");
+  
+  const showProjectSelector = !isBoardView && !shouldHideProjectSelector;
 
   const style = {
     "--sidebar-width": "16rem",

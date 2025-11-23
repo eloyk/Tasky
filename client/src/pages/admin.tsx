@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Shield, AlertCircle, Users, Plus, X } from "lucide-react";
+import { Shield, AlertCircle, Users, Plus, X, Briefcase, LayoutGrid } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import TeamsPage from "./teams";
@@ -67,6 +68,29 @@ interface BoardTeam {
     description: string | null;
     color: string | null;
   };
+}
+
+interface Organization {
+  id: string;
+  name: string;
+  description: string | null;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface OrganizationMember {
+  id: string;
+  userId: string;
+  user: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    profileImageUrl: string | null;
+  };
+  role: string;
+  createdAt: string;
 }
 
 export default function Admin() {
@@ -128,6 +152,21 @@ export default function Admin() {
   const { data: boardTeams = [] } = useQuery<BoardTeam[]>({
     queryKey: ['/api/boards', selectedBoard?.id, 'teams'],
     enabled: !!selectedBoard && boardPermissionsOpen,
+  });
+
+  const { data: organization } = useQuery<Organization>({
+    queryKey: ['/api/organizations', currentUser?.organizationId],
+    enabled: !!currentUser?.organizationId,
+  });
+
+  const { data: organizationMembers = [] } = useQuery<OrganizationMember[]>({
+    queryKey: ['/api/organizations', currentUser?.organizationId, 'members'],
+    enabled: !!currentUser?.organizationId,
+  });
+
+  const { data: organizationTeams = [] } = useQuery<Team[]>({
+    queryKey: ['/api/organizations', currentUser?.organizationId, 'teams'],
+    enabled: !!currentUser?.organizationId && activeTab === 'organization',
   });
 
   const addProjectTeamMutation = useMutation({
@@ -291,15 +330,163 @@ export default function Admin() {
         </TabsList>
 
         <TabsContent value="organization" className="space-y-4">
+          {/* Información básica */}
           <Card>
             <CardHeader>
               <CardTitle>Información de la Organización</CardTitle>
               <CardDescription>
-                Configuración general de tu organización
+                Detalles generales de tu organización
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {organization ? (
+                <>
+                  <div>
+                    <Label className="text-sm font-medium">Nombre</Label>
+                    <p className="text-foreground mt-1">{organization.name}</p>
+                  </div>
+                  {organization.description && (
+                    <div>
+                      <Label className="text-sm font-medium">Descripción</Label>
+                      <p className="text-muted-foreground mt-1">{organization.description}</p>
+                    </div>
+                  )}
+                  <div>
+                    <Label className="text-sm font-medium">Fecha de creación</Label>
+                    <p className="text-muted-foreground mt-1">
+                      {new Date(organization.createdAt).toLocaleDateString('es-ES', { 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <Skeleton className="h-24 w-full" />
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Estadísticas */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Miembros</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{organizationMembers.length}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Usuarios en la organización
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Equipos</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{organizationTeams.length}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Equipos creados
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Proyectos</CardTitle>
+                <Briefcase className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{projects.length}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Proyectos activos
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Tableros</CardTitle>
+                <LayoutGrid className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{boards.length}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Tableros totales
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Lista de miembros */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Miembros de la Organización</CardTitle>
+              <CardDescription>
+                Todos los usuarios que forman parte de esta organización
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">Próximamente...</p>
+              {organizationMembers.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  No hay miembros en la organización
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Usuario</TableHead>
+                      <TableHead>Correo</TableHead>
+                      <TableHead>Rol</TableHead>
+                      <TableHead>Fecha de ingreso</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {organizationMembers.map((member) => {
+                      const userInitials = member.user.firstName && member.user.lastName
+                        ? `${member.user.firstName[0]}${member.user.lastName[0]}`.toUpperCase()
+                        : member.user.email[0].toUpperCase();
+                      const userName = member.user.firstName && member.user.lastName
+                        ? `${member.user.firstName} ${member.user.lastName}`
+                        : member.user.email;
+                      
+                      return (
+                        <TableRow key={member.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={member.user.profileImageUrl || undefined} />
+                                <AvatarFallback className="text-xs">{userInitials}</AvatarFallback>
+                              </Avatar>
+                              <span className="font-medium">{userName}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {member.user.email}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={member.role === 'owner' ? 'default' : member.role === 'admin' ? 'secondary' : 'outline'}>
+                              {member.role === 'owner' ? 'Propietario' : member.role === 'admin' ? 'Administrador' : 'Miembro'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {new Date(member.createdAt).toLocaleDateString('es-ES', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            })}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
