@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { FolderKanban, Plus, Pencil, Trash2 } from "lucide-react";
+import { FolderKanban, Plus, Pencil, Trash2, Users, X, UserPlus } from "lucide-react";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Project, InsertProject, Organization } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -31,14 +33,42 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 
+interface ProjectTeam {
+  id: string;
+  projectId: string;
+  teamId: string;
+  permission: string;
+  team: {
+    id: string;
+    name: string;
+    description: string | null;
+    color: string | null;
+  };
+}
+
+interface Team {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+}
+
 export default function Projects() {
   const [, setLocation] = useLocation();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const [addTeamOpen, setAddTeamOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
+  const [selectedPermission, setSelectedPermission] = useState<string>("view");
   const [formData, setFormData] = useState({ name: "", description: "" });
   const { toast } = useToast();
+
+  const { data: currentUser } = useQuery<any>({
+    queryKey: ['/api/auth/user'],
+  });
 
   // Obtener la organización del usuario (siempre hay una)
   const { data: organizations = [], isLoading: orgsLoading } = useQuery<Organization[]>({
@@ -51,6 +81,16 @@ export default function Projects() {
   // Obtener todos los proyectos del usuario (de su organización)
   const { data: projects = [], isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
+  });
+
+  const { data: projectTeams = [] } = useQuery<ProjectTeam[]>({
+    queryKey: ["/api/projects", selectedProject?.id, "teams"],
+    enabled: !!selectedProject?.id && permissionsOpen,
+  });
+
+  const { data: allTeams = [] } = useQuery<Team[]>({
+    queryKey: ['/api/organizations', currentUser?.organizationId, 'teams'],
+    enabled: !!currentUser?.organizationId && addTeamOpen,
   });
 
   const createMutation = useMutation({
@@ -120,6 +160,52 @@ export default function Projects() {
     },
   });
 
+  const addTeamToProjectMutation = useMutation({
+    mutationFn: async ({ projectId }: { projectId: string }) => {
+      return await apiRequest("POST", `/api/projects/${projectId}/teams`, {
+        teamId: selectedTeamId,
+        permission: selectedPermission,
+      });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", variables.projectId, "teams"] });
+      setAddTeamOpen(false);
+      setSelectedTeamId("");
+      setSelectedPermission("view");
+      toast({
+        title: "Equipo agregado",
+        description: "El equipo se ha asignado al proyecto correctamente.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo agregar el equipo al proyecto.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const removeTeamFromProjectMutation = useMutation({
+    mutationFn: async ({ projectId, teamId }: { projectId: string; teamId: string }) => {
+      return await apiRequest("DELETE", `/api/projects/${projectId}/teams/${teamId}`);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", variables.projectId, "teams"] });
+      toast({
+        title: "Equipo eliminado",
+        description: "El equipo se ha eliminado del proyecto correctamente.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo eliminar el equipo del proyecto.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleCreate = () => {
     if (!userOrg) {
       toast({
@@ -162,6 +248,11 @@ export default function Projects() {
   const openDeleteDialog = (project: Project) => {
     setSelectedProject(project);
     setDeleteDialogOpen(true);
+  };
+
+  const openPermissionsDialog = (project: Project) => {
+    setSelectedProject(project);
+    setPermissionsOpen(true);
   };
 
   if (orgsLoading) {
@@ -302,6 +393,14 @@ export default function Projects() {
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={() => openPermissionsDialog(project)}
+                    data-testid={`button-permissions-${project.id}`}
+                  >
+                    <Users className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => openEditDialog(project)}
                     data-testid={`button-edit-${project.id}`}
                   >
@@ -398,6 +497,183 @@ export default function Projects() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Permissions Dialog */}
+      <Dialog open={permissionsOpen} onOpenChange={setPermissionsOpen}>
+        <DialogContent className="max-w-2xl">
+          {!selectedProject ? (
+            <div className="p-4">No hay proyecto seleccionado</div>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Permisos de Equipos - {selectedProject.name}</DialogTitle>
+                <DialogDescription>
+                  Gestiona qué equipos tienen acceso a este proyecto y sus permisos.
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-medium">Equipos con Acceso</h3>
+              <Button
+                size="sm"
+                onClick={() => setAddTeamOpen(true)}
+                data-testid="button-add-team-to-project"
+              >
+                <UserPlus className="w-4 h-4 mr-2" />
+                Agregar Equipo
+              </Button>
+            </div>
+
+            {projectTeams.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No hay equipos asignados. Todos los miembros de la organización tienen acceso.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {projectTeams.map((projectTeam) => (
+                  <div
+                    key={projectTeam.id}
+                    className="flex items-center justify-between p-3 border rounded-md"
+                    data-testid={`project-team-${projectTeam.team.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {projectTeam.team.color && (
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: projectTeam.team.color }}
+                        />
+                      )}
+                      <div>
+                        <div className="font-medium">{projectTeam.team.name}</div>
+                        {projectTeam.team.description && (
+                          <div className="text-sm text-muted-foreground">
+                            {projectTeam.team.description}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">
+                        {projectTeam.permission === 'view' && 'Ver'}
+                        {projectTeam.permission === 'edit' && 'Editar'}
+                        {projectTeam.permission === 'admin' && 'Admin'}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeTeamFromProjectMutation.mutate({ 
+                          projectId: selectedProject!.id, 
+                          teamId: projectTeam.teamId 
+                        })}
+                        disabled={removeTeamFromProjectMutation.isPending}
+                        data-testid={`button-remove-team-${projectTeam.team.id}`}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+              </div>
+
+              <DialogFooter>
+                <Button onClick={() => setPermissionsOpen(false)}>
+                  Cerrar
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Team to Project Dialog */}
+      <Dialog open={addTeamOpen} onOpenChange={setAddTeamOpen}>
+        <DialogContent>
+          {!selectedProject ? (
+            <div className="p-4">No hay proyecto seleccionado</div>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Agregar Equipo al Proyecto</DialogTitle>
+                <DialogDescription>
+                  Selecciona un equipo y el nivel de permiso que tendrá en este proyecto.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="team-select">Equipo</Label>
+              <Select
+                value={selectedTeamId}
+                onValueChange={setSelectedTeamId}
+              >
+                <SelectTrigger id="team-select" data-testid="select-team">
+                  <SelectValue placeholder="Selecciona un equipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allTeams
+                    .filter(team => !projectTeams.some(pt => pt.teamId === team.id))
+                    .map((team) => (
+                      <SelectItem key={team.id} value={team.id}>
+                        <div className="flex items-center gap-2">
+                          {team.color && (
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: team.color }}
+                            />
+                          )}
+                          <span>{team.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="permission-select">Nivel de Permiso</Label>
+              <Select
+                value={selectedPermission}
+                onValueChange={setSelectedPermission}
+              >
+                <SelectTrigger id="permission-select" data-testid="select-permission">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="view">Ver - Solo lectura</SelectItem>
+                  <SelectItem value="edit">Editar - Puede modificar tareas</SelectItem>
+                  <SelectItem value="admin">Admin - Control total</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setAddTeamOpen(false);
+                    setSelectedTeamId("");
+                    setSelectedPermission("view");
+                  }}
+                  data-testid="button-cancel-add-team"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => addTeamToProjectMutation.mutate({ projectId: selectedProject.id })}
+                  disabled={!selectedTeamId || addTeamToProjectMutation.isPending}
+                  data-testid="button-confirm-add-team"
+                >
+                  {addTeamToProjectMutation.isPending ? "Agregando..." : "Agregar"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
