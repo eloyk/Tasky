@@ -576,16 +576,16 @@ export default function Admin() {
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {projectTeams.map((pt) => (
+                    {projectTeams.filter(pt => pt.team).map((pt) => (
                       <div key={pt.id} className="flex items-center justify-between p-3 border rounded-lg">
                         <div className="flex items-center gap-3">
                           <div
                             className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: pt.team.color || "#3b82f6" }}
+                            style={{ backgroundColor: pt.team?.color || "#3b82f6" }}
                           />
                           <div>
-                            <p className="font-medium">{pt.team.name}</p>
-                            <p className="text-sm text-muted-foreground">{pt.team.description}</p>
+                            <p className="font-medium">{pt.team?.name}</p>
+                            <p className="text-sm text-muted-foreground">{pt.team?.description}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -772,16 +772,16 @@ export default function Admin() {
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {boardTeams.map((bt) => (
+                    {boardTeams.filter(bt => bt.team).map((bt) => (
                       <div key={bt.id} className="flex items-center justify-between p-3 border rounded-lg">
                         <div className="flex items-center gap-3">
                           <div
                             className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: bt.team.color || "#3b82f6" }}
+                            style={{ backgroundColor: bt.team?.color || "#3b82f6" }}
                           />
                           <div>
-                            <p className="font-medium">{bt.team.name}</p>
-                            <p className="text-sm text-muted-foreground">{bt.team.description}</p>
+                            <p className="font-medium">{bt.team?.name}</p>
+                            <p className="text-sm text-muted-foreground">{bt.team?.description}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">

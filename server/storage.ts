@@ -604,10 +604,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBoardTeams(boardId: string): Promise<BoardTeam[]> {
-    return await db
-      .select()
+    const results = await db
+      .select({
+        id: boardTeams.id,
+        boardId: boardTeams.boardId,
+        teamId: boardTeams.teamId,
+        permission: boardTeams.permission,
+        createdAt: boardTeams.createdAt,
+        team: {
+          id: teams.id,
+          name: teams.name,
+          description: teams.description,
+          color: teams.color,
+        }
+      })
       .from(boardTeams)
+      .innerJoin(teams, eq(teams.id, boardTeams.teamId))
       .where(eq(boardTeams.boardId, boardId));
+    
+    return results as BoardTeam[];
   }
 
   async updateBoardTeamPermission(boardId: string, teamId: string, permission: string): Promise<BoardTeam | undefined> {
@@ -632,10 +647,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProjectTeams(projectId: string): Promise<ProjectTeam[]> {
-    return await db
-      .select()
+    const results = await db
+      .select({
+        id: projectTeams.id,
+        projectId: projectTeams.projectId,
+        teamId: projectTeams.teamId,
+        permission: projectTeams.permission,
+        createdAt: projectTeams.createdAt,
+        team: {
+          id: teams.id,
+          name: teams.name,
+          description: teams.description,
+          color: teams.color,
+        }
+      })
       .from(projectTeams)
+      .innerJoin(teams, eq(teams.id, projectTeams.teamId))
       .where(eq(projectTeams.projectId, projectId));
+    
+    return results as ProjectTeam[];
   }
 
   async updateProjectTeamPermission(projectId: string, teamId: string, permission: string): Promise<ProjectTeam | undefined> {
