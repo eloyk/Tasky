@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import TeamsPage from "./teams";
 
 export default function Admin() {
   const { data: currentUser, isLoading } = useQuery<any>({
@@ -78,17 +79,7 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="teams" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Gestión de Equipos</CardTitle>
-              <CardDescription>
-                Administra los equipos de tu organización y sus miembros
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">En construcción...</p>
-            </CardContent>
-          </Card>
+          <TeamsPage />
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-4">

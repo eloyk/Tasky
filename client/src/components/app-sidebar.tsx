@@ -40,11 +40,6 @@ const adminMenuItems = [
     url: "/admin",
     icon: Shield,
   },
-  {
-    title: "Equipos",
-    url: "/teams",
-    icon: Users,
-  },
 ];
 
 export function AppSidebar() {
