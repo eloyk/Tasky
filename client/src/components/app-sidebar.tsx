@@ -1,4 +1,4 @@
-import { Kanban, Home, Settings, Users, Shield } from "lucide-react";
+import { Kanban, Home, Settings, Users, Shield, LogOut } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -11,6 +11,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
+  SidebarFooter,
 } from "@/components/ui/sidebar";
 
 const menuItems = [
@@ -133,6 +134,21 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter className="border-t p-4">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              data-testid="button-logout"
+            >
+              <a href="/api/logout" className="text-destructive">
+                <LogOut />
+                <span>Cerrar sesión</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }
