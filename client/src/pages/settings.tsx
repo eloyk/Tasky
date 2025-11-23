@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, Upload, User } from "lucide-react";
+import { Loader2, Upload, User, KeyRound } from "lucide-react";
 
 const profileFormSchema = z.object({
   firstName: z.string().min(1, "El nombre es requerido").max(100),
@@ -167,10 +167,17 @@ export default function Settings() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex items-center gap-6">
-              <Avatar className="h-24 w-24" data-testid="avatar-profile">
-                <AvatarImage src={form.watch('profileImageUrl') || undefined} alt={user.email} />
-                <AvatarFallback className="text-2xl">{userInitials}</AvatarFallback>
-              </Avatar>
+              <div className="relative">
+                <Avatar className="h-24 w-24" data-testid="avatar-profile">
+                  <AvatarImage src={form.watch('profileImageUrl') || undefined} alt={user.email} />
+                  <AvatarFallback className="text-2xl">{userInitials}</AvatarFallback>
+                </Avatar>
+                {isUploading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-full">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+                )}
+              </div>
               <div className="space-y-2">
                 <Button
                   type="button"
@@ -181,11 +188,16 @@ export default function Settings() {
                   data-testid="button-upload-image"
                 >
                   {isUploading ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Subiendo...
+                    </>
                   ) : (
-                    <Upload className="h-4 w-4 mr-2" />
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Cambiar foto
+                    </>
                   )}
-                  Cambiar foto
                 </Button>
                 <Input
                   id="profile-image"
@@ -296,8 +308,8 @@ export default function Settings() {
                   }}
                   data-testid="button-change-password"
                 >
-                  <User className="h-4 w-4 mr-2" />
-                  Administrar cuenta
+                  <KeyRound className="h-4 w-4 mr-2" />
+                  Cambiar contraseña
                 </Button>
               </div>
             </div>
