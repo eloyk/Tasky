@@ -322,8 +322,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
+      // Get user's primary organization membership (first one)
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(eq(organizationMembers.userId, user.id))
+        .limit(1);
+      
       console.log("[/api/auth/user] Returning user:", user.email);
-      res.json(user);
+      res.json({
+        ...user,
+        organizationId: membership?.organizationId || null,
+        role: membership?.role || null,
+      });
     } catch (error) {
       console.error("[/api/auth/user] Error:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -701,6 +712,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching projects:", error);
       res.status(500).json({ message: "Failed to fetch projects" });
+    }
+  });
+
+  app.get("/api/organizations/:id/members", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if user is a member of the organization
+      const [membership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.organizationId, id),
+          eq(organizationMembers.userId, user.id)
+        ));
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this organization" });
+      }
+
+      // Get all members of the organization with user details
+      const members = await db
+        .select({
+          id: organizationMembers.id,
+          userId: users.id,
+          user: {
+            id: users.id,
+            email: users.email,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            profileImageUrl: users.profileImageUrl,
+          },
+          role: organizationMembers.role,
+          createdAt: organizationMembers.createdAt,
+        })
+        .from(organizationMembers)
+        .innerJoin(users, eq(organizationMembers.userId, users.id))
+        .where(eq(organizationMembers.organizationId, id));
+
+      res.json(members);
+    } catch (error) {
+      console.error("Error fetching organization members:", error);
+      res.status(500).json({ message: "Failed to fetch organization members" });
     }
   });
 

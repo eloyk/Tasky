@@ -14,6 +14,7 @@ import Projects from "@/pages/projects";
 import Boards from "@/pages/boards";
 import BoardView from "@/pages/board-view";
 import Settings from "@/pages/settings";
+import Teams from "@/pages/teams";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
@@ -79,6 +80,7 @@ function Router() {
           <Route path="/boards" component={Boards} />
           <Route path="/boards/:id" component={BoardView} />
           <Route path="/settings" component={Settings} />
+          <Route path="/teams" component={Teams} />
           <Route component={NotFound} />
         </Switch>
       </MainLayout>

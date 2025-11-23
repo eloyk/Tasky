@@ -1,5 +1,6 @@
-import { Kanban, Home, Settings } from "lucide-react";
+import { Kanban, Home, Settings, Users } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +24,9 @@ const menuItems = [
     url: "/boards",
     icon: Kanban,
   },
+];
+
+const userMenuItems = [
   {
     title: "Configuración",
     url: "/settings",
@@ -30,8 +34,22 @@ const menuItems = [
   },
 ];
 
+const adminMenuItems = [
+  {
+    title: "Equipos",
+    url: "/teams",
+    icon: Users,
+  },
+];
+
 export function AppSidebar() {
   const [location] = useLocation();
+  
+  const { data: currentUser } = useQuery<any>({
+    queryKey: ['/api/auth/user'],
+  });
+
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'OWNER';
 
   return (
     <Sidebar>
@@ -52,6 +70,52 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === item.url}
+                    data-testid={`nav-${item.title.toLowerCase()}`}
+                  >
+                    <Link href={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Administración</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminMenuItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location === item.url}
+                      data-testid={`nav-${item.title.toLowerCase()}`}
+                    >
+                      <Link href={item.url}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Usuario</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {userMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
