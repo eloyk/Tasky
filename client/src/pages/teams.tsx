@@ -35,29 +35,24 @@ interface Team {
   updatedAt: string;
 }
 
+// Tipo para los miembros de equipo con información de usuario desde Keycloak (estructura plana)
 interface TeamMember {
-  id: string;
-  teamId: string;
   userId: string;
-  user: {
-    id: string;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-    profileImageUrl: string | null;
-  };
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string;
+  role: 'owner' | 'admin' | 'member';
 }
 
+// Tipo para los miembros con información de usuario desde Keycloak (estructura plana)
 interface OrganizationMember {
-  id: string;
   userId: string;
-  user: {
-    id: string;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-    profileImageUrl: string | null;
-  };
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string;
+  role: 'owner' | 'admin' | 'member';
 }
 
 export default function TeamsPage() {
@@ -572,25 +567,24 @@ export default function TeamsPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {teamMembers?.filter(member => member.user).map((member) => (
+                  {teamMembers?.map((member) => (
                     <div
-                      key={member.id}
+                      key={member.userId}
                       className="flex items-center justify-between p-3 rounded-md border"
                       data-testid={`member-item-${member.userId}`}
                     >
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={member.user?.profileImageUrl || undefined} />
                           <AvatarFallback className="text-xs">
-                            {getUserInitials(member.user)}
+                            {getUserInitials(member)}
                           </AvatarFallback>
                         </Avatar>
                         <div>
                           <p className="text-sm font-medium" data-testid={`text-member-name-${member.userId}`}>
-                            {getUserDisplayName(member.user)}
+                            {getUserDisplayName(member)}
                           </p>
                           <p className="text-xs text-muted-foreground" data-testid={`text-member-email-${member.userId}`}>
-                            {member.user?.email}
+                            {member.email}
                           </p>
                         </div>
                       </div>
@@ -633,17 +627,16 @@ export default function TeamsPage() {
                     data-testid={`button-select-member-${orgMember.userId}`}
                   >
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={orgMember.user.profileImageUrl || undefined} />
                       <AvatarFallback className="text-xs">
-                        {getUserInitials(orgMember.user)}
+                        {getUserInitials(orgMember)}
                       </AvatarFallback>
                     </Avatar>
                     <div>
                       <p className="text-sm font-medium">
-                        {getUserDisplayName(orgMember.user)}
+                        {getUserDisplayName(orgMember)}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {orgMember.user.email}
+                        {orgMember.email}
                       </p>
                     </div>
                   </button>
