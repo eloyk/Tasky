@@ -769,6 +769,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Endpoint para verificar si el usuario actual puede crear organizaciones
+  app.get("/api/auth/can-create-organizations", isAuthenticated, async (req: any, res) => {
+    try {
+      const keycloakUserId = req.user.claims.sub;
+      const canCreate = await keycloakAdmin.canCreateOrganizations(keycloakUserId);
+      res.json({ canCreate });
+    } catch (error) {
+      console.error("[API] Error checking organization creation permission:", error);
+      res.json({ canCreate: false });
+    }
+  });
+
   // Endpoint administrativo: Otorgar permiso de creación de organizaciones
   app.post("/api/admin/grant-org-creator/:userId", isAuthenticated, async (req: any, res) => {
     try {

@@ -42,6 +42,13 @@ export default function Organizations() {
     queryKey: ["/api/organizations"],
   });
 
+  // Verificar si el usuario puede crear organizaciones
+  const { data: permissions } = useQuery<{ canCreate: boolean }>({
+    queryKey: ["/api/auth/can-create-organizations"],
+  });
+
+  const canCreateOrganizations = permissions?.canCreate ?? false;
+
   const createMutation = useMutation({
     mutationFn: async (data: InsertOrganization) => {
       return await apiRequest("POST", "/api/organizations", data);
@@ -168,13 +175,14 @@ export default function Organizations() {
             Gestiona tus organizaciones y sus miembros.
           </p>
         </div>
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-create-organization">
-              <Plus className="w-4 h-4 mr-2" />
-              Nueva Organización
-            </Button>
-          </DialogTrigger>
+        {canCreateOrganizations && (
+          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-create-organization">
+                <Plus className="w-4 h-4 mr-2" />
+                Nueva Organización
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Crear Nueva Organización</DialogTitle>
@@ -223,17 +231,24 @@ export default function Organizations() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       {organizations.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg">
           <Building2 className="w-16 h-16 text-muted-foreground mb-4" />
           <h2 className="text-xl font-semibold mb-2">No hay organizaciones</h2>
-          <p className="text-muted-foreground mb-4">Crea tu primera organización para comenzar.</p>
-          <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-create-first-organization">
-            <Plus className="w-4 h-4 mr-2" />
-            Crear Organización
-          </Button>
+          <p className="text-muted-foreground mb-4">
+            {canCreateOrganizations 
+              ? "Crea tu primera organización para comenzar."
+              : "No perteneces a ninguna organización. Contacta al administrador del sistema."}
+          </p>
+          {canCreateOrganizations && (
+            <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-create-first-organization">
+              <Plus className="w-4 h-4 mr-2" />
+              Crear Organización
+            </Button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
