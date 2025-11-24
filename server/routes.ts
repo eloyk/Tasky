@@ -791,6 +791,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // List all users from Keycloak (for admin purposes)
+  app.get("/api/keycloak/users", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Only users with organization-creators permission can list all users
+      const canCreate = await keycloakAdmin.canCreateOrganizations(keycloakUserId);
+      
+      if (!canCreate) {
+        return res.status(403).json({ 
+          message: "No tienes permiso para ver todos los usuarios" 
+        });
+      }
+
+      const users = await keycloakAdmin.listAllUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("[API] Error listing Keycloak users:", error);
+      res.status(500).json({ message: "Failed to list users" });
+    }
+  });
+
   // Endpoint administrativo: Otorgar permiso de creación de organizaciones
   app.post("/api/admin/grant-org-creator/:userId", isAuthenticated, async (req: any, res) => {
     try {
@@ -901,47 +929,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get organization members from Keycloak (source of truth)
   app.get("/api/organizations/:id/members", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Check if user is a member of the organization
-      const [membership] = await db
-        .select()
-        .from(organizationMembers)
-        .where(and(
-          eq(organizationMembers.organizationId, id),
-          eq(organizationMembers.userId, user.id)
-        ));
-
-      if (!membership) {
+      // Check if user has access to this organization (using Keycloak as source of truth)
+      const userRole = await getUserOrganizationRole(keycloakUserId, id);
+      
+      if (!userRole) {
         return res.status(403).json({ message: "Not a member of this organization" });
       }
 
-      // Get all members of the organization with user details
-      const members = await db
-        .select({
-          id: organizationMembers.id,
-          userId: users.id,
-          user: {
-            id: users.id,
-            email: users.email,
-            firstName: users.firstName,
-            lastName: users.lastName,
-            profileImageUrl: users.profileImageUrl,
-          },
-          role: organizationMembers.role,
-          createdAt: organizationMembers.createdAt,
-        })
-        .from(organizationMembers)
-        .innerJoin(users, eq(organizationMembers.userId, users.id))
-        .where(eq(organizationMembers.organizationId, id));
+      // Get members from Keycloak (source of truth)
+      const keycloakMembers = await keycloakAdmin.getOrganizationMembers(id);
+
+      // Transform to match expected frontend format
+      const members = keycloakMembers.map(member => ({
+        userId: member.userId,
+        email: member.email,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        username: member.username,
+        role: member.role,
+      }));
 
       res.json(members);
     } catch (error) {
@@ -950,49 +968,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add member to organization (using Keycloak as source of truth)
   app.post("/api/organizations/:id/members", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const { userEmail: memberEmail, role } = req.body;
+      const { keycloakUserId, role } = req.body;
       const userEmail = req.user.claims.email;
+      const requestingKeycloakId = req.user.claims.sub;
+      
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Check if requester is admin or owner
-      const [membership] = await db
+      // Check if requester is admin or owner (using Keycloak as source of truth)
+      const requesterRole = await getUserOrganizationRole(requestingKeycloakId, id);
+      
+      if (!requesterRole || (requesterRole !== 'owner' && requesterRole !== 'admin')) {
+        return res.status(403).json({ message: "No tienes autorización para agregar miembros" });
+      }
+
+      // Verify the user exists in Keycloak
+      const keycloakUser = await keycloakAdmin.getUserById(keycloakUserId);
+      
+      if (!keycloakUser) {
+        return res.status(404).json({ message: "Usuario no encontrado en Keycloak" });
+      }
+
+      // Normalize role to lowercase
+      const normalizedRole = (role || 'member').toLowerCase() as 'owner' | 'admin' | 'member';
+
+      // Assign user to organization in Keycloak (source of truth)
+      await keycloakAdmin.assignUserToOrganizationRole(keycloakUserId, id, normalizedRole);
+
+      // Also sync to local database for compatibility
+      // Find or create user in local DB
+      let [localUser] = await db.select().from(users).where(eq(users.email, keycloakUser.email));
+      
+      if (!localUser) {
+        // Create user in local DB if doesn't exist
+        [localUser] = await db.insert(users).values({
+          email: keycloakUser.email,
+          firstName: keycloakUser.firstName || null,
+          lastName: keycloakUser.lastName || null,
+        }).returning();
+      }
+
+      // Check if membership already exists in local DB
+      const [existingMembership] = await db
         .select()
         .from(organizationMembers)
         .where(and(
           eq(organizationMembers.organizationId, id),
-          eq(organizationMembers.userId, user.id)
+          eq(organizationMembers.userId, localUser.id)
         ));
 
-      if (!membership || (membership.role !== OrganizationRole.OWNER && membership.role !== OrganizationRole.ADMIN)) {
-        return res.status(403).json({ message: "Not authorized to add members" });
+      if (existingMembership) {
+        // Update existing membership
+        await db
+          .update(organizationMembers)
+          .set({ role: normalizedRole })
+          .where(and(
+            eq(organizationMembers.organizationId, id),
+            eq(organizationMembers.userId, localUser.id)
+          ));
+      } else {
+        // Create new membership
+        await db.insert(organizationMembers).values({
+          organizationId: id,
+          userId: localUser.id,
+          role: normalizedRole,
+        });
       }
 
-      // Find member by email
-      const [memberUser] = await db.select().from(users).where(eq(users.email, memberEmail));
-      
-      if (!memberUser) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const validatedData = insertOrganizationMemberSchema.parse({
-        organizationId: id,
-        userId: memberUser.id,
-        role: role || OrganizationRole.MEMBER,
+      res.json({ 
+        userId: keycloakUserId,
+        email: keycloakUser.email,
+        firstName: keycloakUser.firstName,
+        lastName: keycloakUser.lastName,
+        role: normalizedRole 
       });
-
-      const [member] = await db.insert(organizationMembers).values(validatedData).returning();
-
-      res.json(member);
     } catch (error) {
       console.error("Error adding organization member:", error);
-      res.status(400).json({ message: "Failed to add member" });
+      res.status(400).json({ 
+        message: "No se pudo agregar el miembro",
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   });
 
