@@ -748,6 +748,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Endpoint administrativo: Otorgar permiso de creación de organizaciones
+  app.post("/api/admin/grant-org-creator/:userId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      const userEmail = req.user.claims.email;
+      const [requestingUser] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!requestingUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // CRITICAL: Solo usuarios con permiso de crear organizaciones pueden otorgar este permiso
+      const canGrantPermission = await keycloakAdmin.canCreateOrganizations(requestingUser.id);
+      if (!canGrantPermission) {
+        return res.status(403).json({ 
+          message: "No tienes permiso para otorgar permisos de creación de organizaciones." 
+        });
+      }
+
+      // Verificar que el usuario objetivo existe
+      const [targetUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!targetUser) {
+        return res.status(404).json({ message: "Usuario objetivo no encontrado" });
+      }
+
+      // Otorgar permiso en Keycloak
+      await keycloakAdmin.grantOrganizationCreatorPermission(userId);
+
+      res.json({ 
+        message: `Permiso de creación de organizaciones otorgado a ${targetUser.email}`,
+        userId: targetUser.id,
+        email: targetUser.email
+      });
+    } catch (error) {
+      console.error("Error granting org creator permission:", error);
+      res.status(500).json({ message: "Failed to grant permission" });
+    }
+  });
+
   app.get("/api/organizations/:id", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
