@@ -1205,11 +1205,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/projects", isAuthenticated, async (req: any, res) => {
     try {
       const userEmail = req.user.claims.email;
+      console.log("[GET /api/projects] User email:", userEmail);
+      
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
+        console.log("[GET /api/projects] User not found in database");
         return res.status(401).json({ message: "User not found" });
       }
+
+      console.log("[GET /api/projects] User found:", user.id, user.email);
 
       // Get user's organization membership
       const [membership] = await db
@@ -1219,13 +1224,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .limit(1);
 
       if (!membership) {
+        console.log("[GET /api/projects] No membership found for user");
         return res.json([]);
       }
+
+      console.log("[GET /api/projects] Membership found:", membership.organizationId, membership.role);
 
       let userProjects;
 
       // Owners and Admins see ALL projects in their organization
       if (membership.role === OrganizationRole.OWNER || membership.role === OrganizationRole.ADMIN) {
+        console.log("[GET /api/projects] User is owner/admin, fetching all projects for org:", membership.organizationId);
         userProjects = await db
           .select({
             id: projects.id,
@@ -1255,6 +1264,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(eq(projectMembers.userId, user.id));
       }
 
+      console.log("[GET /api/projects] Found", userProjects.length, "projects");
+
       // Add team count for each project
       const projectsWithCounts = await Promise.all(
         userProjects.map(async (project) => {
@@ -1270,6 +1281,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
 
+      console.log("[GET /api/projects] Returning", projectsWithCounts.length, "projects with counts");
       res.json(projectsWithCounts);
     } catch (error) {
       console.error("Error fetching projects:", error);
