@@ -708,12 +708,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
+        console.error("[API] User not found for email:", userEmail);
         return res.status(401).json({ message: "User not found" });
       }
 
+      console.log("[API] Creating organization for user:", user.id);
+
       // CRITICAL: Verificar que el usuario tenga permiso para crear organizaciones
       const canCreate = await keycloakAdmin.canCreateOrganizations(user.id);
+      console.log("[API] User can create organizations:", canCreate);
+      
       if (!canCreate) {
+        console.error("[API] User", user.id, "does not have permission to create organizations");
         return res.status(403).json({ 
           message: "No tienes permiso para crear organizaciones. Contacta al administrador del sistema." 
         });
@@ -724,7 +730,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ownerId: user.id,
       });
 
+      console.log("[API] Validated data:", validatedData);
+
       const [organization] = await db.insert(organizations).values(validatedData).returning();
+      console.log("[API] Organization created in DB:", organization.id);
 
       // Crear grupo y roles en Keycloak para la organización
       try {
@@ -743,10 +752,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: OrganizationRole.OWNER,
       });
 
+      console.log("[API] Organization member added, returning success");
       res.json(organization);
     } catch (error) {
-      console.error("Error creating organization:", error);
-      res.status(400).json({ message: "Failed to create organization" });
+      console.error("[API] Error creating organization - Full error:", error);
+      console.error("[API] Error stack:", error instanceof Error ? error.stack : 'No stack');
+      console.error("[API] Error message:", error instanceof Error ? error.message : String(error));
+      res.status(400).json({ 
+        message: "Failed to create organization",
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   });
 
