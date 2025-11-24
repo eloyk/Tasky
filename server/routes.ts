@@ -44,6 +44,7 @@ import { eq, and, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { createDefaultBoardColumns } from "./projectHelpers.js";
 import type { Task, Board, Project } from "../shared/schema.js";
+import { keycloakAdmin } from "./keycloakAdmin.js";
 
 // Helper function to get task with assignee information
 async function getTaskWithAssignee(taskId: string) {
@@ -675,6 +676,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
+      // CRITICAL: Verificar que el usuario tenga permiso para crear organizaciones
+      const canCreate = await keycloakAdmin.canCreateOrganizations(user.id);
+      if (!canCreate) {
+        return res.status(403).json({ 
+          message: "No tienes permiso para crear organizaciones. Contacta al administrador del sistema." 
+        });
+      }
+
       const validatedData = insertOrganizationSchema.parse({
         ...req.body,
         ownerId: user.id,
@@ -682,7 +691,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const [organization] = await db.insert(organizations).values(validatedData).returning();
 
-      // Add owner as member with owner role
+      // Crear grupo y roles en Keycloak para la organización
+      try {
+        await keycloakAdmin.createOrganizationGroup(organization.id, organization.name);
+        await keycloakAdmin.assignUserToOrganizationRole(user.id, organization.id, 'owner');
+        console.log("[API] Roles de Keycloak creados y asignados para organización:", organization.id);
+      } catch (kcError) {
+        console.error("[API] Error al crear roles en Keycloak:", kcError);
+        // Continuar - la organización se creó en BD pero sin roles en Keycloak
+      }
+
+      // Add owner as member with owner role (mantener en BD local por compatibilidad)
       await db.insert(organizationMembers).values({
         organizationId: organization.id,
         userId: user.id,

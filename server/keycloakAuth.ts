@@ -11,6 +11,7 @@ import { db } from "./db.js";
 import { organizations, organizationMembers, projects, projectMembers, boards } from "../shared/schema.js";
 import { eq, and } from "drizzle-orm";
 import { createDefaultBoardColumns } from "./projectHelpers.js";
+import { keycloakAdmin } from "./keycloakAdmin.js";
 
 const getKeycloakConfig = memoize(
   async () => {
@@ -115,7 +116,16 @@ async function upsertUser(claims: any) {
       
       console.log("[upsertUser] Created personal organization:", userOrg.id);
 
-      // Add user to organization as owner
+      // Crear grupo y roles en Keycloak para la organización
+      try {
+        await keycloakAdmin.createOrganizationGroup(userOrg.id, userOrg.name);
+        await keycloakAdmin.assignUserToOrganizationRole(result.id, userOrg.id, 'owner');
+        console.log("[upsertUser] Roles de Keycloak creados y asignados para organización:", userOrg.id);
+      } catch (error) {
+        console.error("[upsertUser] Error al crear roles en Keycloak:", error);
+      }
+
+      // Add user to organization as owner (mantener en BD local por compatibilidad, pero el rol real viene de Keycloak)
       await db.insert(organizationMembers).values({
         organizationId: userOrg.id,
         userId: result.id,
