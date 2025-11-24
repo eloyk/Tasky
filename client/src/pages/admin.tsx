@@ -79,18 +79,14 @@ interface Organization {
   updatedAt: string;
 }
 
+// Tipo para los miembros con información de usuario desde Keycloak (estructura plana)
 interface OrganizationMember {
-  id: string;
   userId: string;
-  user: {
-    id: string;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-    profileImageUrl: string | null;
-  };
-  role: string;
-  createdAt: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string;
+  role: 'owner' | 'admin' | 'member';
 }
 
 export default function Admin() {
@@ -448,26 +444,25 @@ export default function Admin() {
                   </TableHeader>
                   <TableBody>
                     {organizationMembers.map((member) => {
-                      const userInitials = member.user.firstName && member.user.lastName
-                        ? `${member.user.firstName[0]}${member.user.lastName[0]}`.toUpperCase()
-                        : member.user.email[0].toUpperCase();
-                      const userName = member.user.firstName && member.user.lastName
-                        ? `${member.user.firstName} ${member.user.lastName}`
-                        : member.user.email;
+                      const userInitials = member.firstName && member.lastName
+                        ? `${member.firstName[0]}${member.lastName[0]}`.toUpperCase()
+                        : member.email[0].toUpperCase();
+                      const userName = member.firstName && member.lastName
+                        ? `${member.firstName} ${member.lastName}`
+                        : member.email;
                       
                       return (
-                        <TableRow key={member.id}>
+                        <TableRow key={member.userId}>
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <Avatar className="h-8 w-8">
-                                <AvatarImage src={member.user.profileImageUrl || undefined} />
                                 <AvatarFallback className="text-xs">{userInitials}</AvatarFallback>
                               </Avatar>
                               <span className="font-medium">{userName}</span>
                             </div>
                           </TableCell>
                           <TableCell className="text-muted-foreground">
-                            {member.user.email}
+                            {member.email}
                           </TableCell>
                           <TableCell>
                             <Badge variant={member.role === 'owner' ? 'default' : member.role === 'admin' ? 'secondary' : 'outline'}>
@@ -475,11 +470,7 @@ export default function Admin() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-muted-foreground">
-                            {new Date(member.createdAt).toLocaleDateString('es-ES', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric'
-                            })}
+                            -
                           </TableCell>
                         </TableRow>
                       );
