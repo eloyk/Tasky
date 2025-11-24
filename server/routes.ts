@@ -1087,49 +1087,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/boards/:id/columns", isAuthenticated, async (req: any, res) => {
-    try {
-      const { id: boardId } = req.params;
-      const userEmail = req.user.claims.email;
-      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
-      
-      if (!user) {
-        return res.status(401).json({ message: "User not found" });
-      }
-
-      // Verify board exists and get its project
-      const [board] = await db.select().from(boards).where(eq(boards.id, boardId));
-      if (!board) {
-        return res.status(404).json({ message: "Board not found" });
-      }
-
-      // Check if user is a member of the board's project
-      const [membership] = await db
-        .select()
-        .from(projectMembers)
-        .where(and(
-          eq(projectMembers.projectId, board.projectId),
-          eq(projectMembers.userId, user.id)
-        ));
-
-      if (!membership) {
-        return res.status(403).json({ message: "Not a member of this project" });
-      }
-
-      // Get columns for this board ordered by order field
-      const columns = await db
-        .select()
-        .from(boardColumns)
-        .where(eq(boardColumns.boardId, boardId))
-        .orderBy(boardColumns.order);
-
-      res.json(columns);
-    } catch (error) {
-      console.error("Error fetching board columns:", error);
-      res.status(500).json({ message: "Failed to fetch board columns" });
-    }
-  });
-
   app.post("/api/boards/:id/columns", isAuthenticated, async (req: any, res) => {
     try {
       const { id: boardId } = req.params;
