@@ -276,6 +276,22 @@ class KeycloakAdminService {
   }
 
   /**
+   * Busca grupos en Keycloak por criterio de búsqueda
+   */
+  async findGroups(search: string): Promise<any[]> {
+    await this.initialize();
+    return this.client.groups.find({ search });
+  }
+
+  /**
+   * Busca usuarios en Keycloak por email
+   */
+  async findUsersByEmail(email: string, exact: boolean = true): Promise<any[]> {
+    await this.initialize();
+    return this.client.users.find({ email, exact });
+  }
+
+  /**
    * Asigna permiso de creación de organizaciones a un usuario
    * IMPORTANTE: Solo debe llamarse manualmente para el primer usuario admin
    */

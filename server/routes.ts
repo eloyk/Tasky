@@ -3317,6 +3317,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========================================
+  // ADMIN ROUTES - Keycloak Sync
+  // ========================================
+
+  /**
+   * Sincroniza organizaciones existentes con Keycloak
+   * Solo para organization-creators
+   */
+  app.post("/api/admin/sync-organizations-to-keycloak", isAuthenticated, async (req: any, res) => {
+    try {
+      const keycloakUserId = req.user.claims.sub;
+      
+      // Verificar que el usuario sea organization-creator
+      const canCreate = await keycloakAdmin.canCreateOrganizations(keycloakUserId);
+      
+      if (!canCreate) {
+        return res.status(403).json({ 
+          message: "Solo los creadores de organizaciones pueden ejecutar esta sincronización" 
+        });
+      }
+
+      // Obtener todas las organizaciones
+      const allOrgs = await db.select().from(organizations);
+      
+      const results = {
+        total: allOrgs.length,
+        synced: 0,
+        alreadyExists: 0,
+        errors: [] as any[]
+      };
+
+      for (const org of allOrgs) {
+        try {
+          // Verificar si el grupo ya existe en Keycloak
+          const groups = await keycloakAdmin.findGroups(`org-${org.id}`);
+
+          if (groups.length > 0) {
+            console.log(`[Sync] Organización ${org.id} ya tiene grupo en Keycloak`);
+            results.alreadyExists++;
+            continue;
+          }
+
+          // Crear grupo en Keycloak
+          console.log(`[Sync] Creando grupo en Keycloak para organización: ${org.id}`);
+          await keycloakAdmin.createOrganizationGroup(org.id, org.name);
+
+          // Obtener el owner de la BD local
+          const [ownerMembership] = await db
+            .select()
+            .from(organizationMembers)
+            .where(and(
+              eq(organizationMembers.organizationId, org.id),
+              eq(organizationMembers.role, OrganizationRole.OWNER)
+            ))
+            .limit(1);
+
+          if (ownerMembership) {
+            // Buscar el usuario por su ID local
+            const [ownerUser] = await db
+              .select()
+              .from(users)
+              .where(eq(users.id, ownerMembership.userId))
+              .limit(1);
+
+            if (ownerUser && ownerUser.email) {
+              // Buscar el usuario en Keycloak por email
+              const kcUsers = await keycloakAdmin.findUsersByEmail(ownerUser.email, true);
+
+              if (kcUsers.length > 0) {
+                const kcUserId = kcUsers[0].id!;
+                // Asignar al owner al grupo
+                await keycloakAdmin.assignUserToOrganizationRole(kcUserId, org.id, 'owner');
+                console.log(`[Sync] Owner asignado a organización ${org.id}`);
+              }
+            }
+          }
+
+          results.synced++;
+        } catch (error) {
+          console.error(`[Sync] Error al sincronizar organización ${org.id}:`, error);
+          results.errors.push({
+            organizationId: org.id,
+            organizationName: org.name,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        message: "Sincronización completada",
+        results
+      });
+    } catch (error) {
+      console.error("Error en sincronización de organizaciones:", error);
+      res.status(500).json({ 
+        message: "Error al sincronizar organizaciones",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;
