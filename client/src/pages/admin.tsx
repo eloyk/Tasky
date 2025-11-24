@@ -125,14 +125,10 @@ export default function Admin() {
     queryKey: ['/api/auth/user'],
   });
 
-  console.log("[AdminPanel] currentUser:", currentUser, "isLoading:", isLoading);
-
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['/api/projects'],
     enabled: !!currentUser,
   });
-
-  console.log("[AdminPanel] projects:", projects, "length:", projects.length);
 
   const { data: projectTeams = [] } = useQuery<ProjectTeam[]>({
     queryKey: ['/api/projects', selectedProject?.id, 'teams'],
@@ -148,8 +144,6 @@ export default function Admin() {
     queryKey: ['/api/boards'],
     enabled: !!currentUser,
   });
-
-  console.log("[AdminPanel] boards:", boards, "length:", boards.length);
 
   const { data: boardTeams = [] } = useQuery<BoardTeam[]>({
     queryKey: ['/api/boards', selectedBoard?.id, 'teams'],

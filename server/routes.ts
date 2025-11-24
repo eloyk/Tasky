@@ -1265,25 +1265,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("[GET /api/projects] User found:", user.id, user.email);
 
-      // Get user's organization membership
-      const [membership] = await db
+      // Get ALL user's organization memberships
+      const memberships = await db
         .select()
         .from(organizationMembers)
-        .where(eq(organizationMembers.userId, user.id))
-        .limit(1);
+        .where(eq(organizationMembers.userId, user.id));
 
-      if (!membership) {
+      if (memberships.length === 0) {
         console.log("[GET /api/projects] No membership found for user");
         return res.json([]);
       }
 
-      console.log("[GET /api/projects] Membership found:", membership.organizationId, membership.role);
+      console.log("[GET /api/projects] Found", memberships.length, "organization memberships");
 
       let userProjects;
 
-      // Owners and Admins see ALL projects in their organization
-      if (membership.role === OrganizationRole.OWNER || membership.role === OrganizationRole.ADMIN) {
-        console.log("[GET /api/projects] User is owner/admin, fetching all projects for org:", membership.organizationId);
+      // Get org IDs where user is owner or admin
+      const adminOrgIds = memberships
+        .filter(m => m.role === OrganizationRole.OWNER || m.role === OrganizationRole.ADMIN)
+        .map(m => m.organizationId);
+
+      if (adminOrgIds.length > 0) {
+        // User is owner/admin in at least one org - get ALL projects from those orgs
+        console.log("[GET /api/projects] User is owner/admin in", adminOrgIds.length, "orgs");
         userProjects = await db
           .select({
             id: projects.id,
@@ -1295,9 +1299,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             updatedAt: projects.updatedAt,
           })
           .from(projects)
-          .where(eq(projects.organizationId, membership.organizationId));
+          .where(inArray(projects.organizationId, adminOrgIds));
       } else {
-        // Regular members only see projects where they are explicitly added
+        // Regular member - only see projects where explicitly added
         userProjects = await db
           .select({
             id: projects.id,
@@ -2262,21 +2266,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Get user's organization membership
-      const [membership] = await db
+      // Get ALL user's organization memberships
+      const memberships = await db
         .select()
         .from(organizationMembers)
-        .where(eq(organizationMembers.userId, user.id))
-        .limit(1);
+        .where(eq(organizationMembers.userId, user.id));
 
-      if (!membership) {
+      if (memberships.length === 0) {
         return res.json([]);
       }
 
       let userBoards;
 
-      // Owners and Admins see ALL boards in their organization
-      if (membership.role === OrganizationRole.OWNER || membership.role === OrganizationRole.ADMIN) {
+      // Get org IDs where user is owner or admin
+      const adminOrgIds = memberships
+        .filter(m => m.role === OrganizationRole.OWNER || m.role === OrganizationRole.ADMIN)
+        .map(m => m.organizationId);
+
+      if (adminOrgIds.length > 0) {
+        // User is owner/admin in at least one org - get ALL boards from those orgs
         userBoards = await db
           .select({
             id: boards.id,
@@ -2291,9 +2299,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
           .from(boards)
           .innerJoin(projects, eq(projects.id, boards.projectId))
-          .where(eq(projects.organizationId, membership.organizationId));
+          .where(inArray(projects.organizationId, adminOrgIds));
       } else {
-        // Regular members only see boards from projects they are explicitly added to
+        // Regular member - only see boards from projects where explicitly added
         userBoards = await db
           .select({
             id: boards.id,
