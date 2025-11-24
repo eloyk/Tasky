@@ -51,51 +51,63 @@ import { keycloakAdmin } from "./keycloakAdmin.js";
  * PRIORIDAD: Keycloak (fuente de verdad) > BD local (fallback temporal)
  */
 async function getUserOrganizationRole(
-  userId: string,
+  keycloakUserId: string,
   organizationId: string
 ): Promise<'owner' | 'admin' | 'member' | null> {
   try {
+    console.log(`[getUserOrganizationRole] Checking role for Keycloak user ${keycloakUserId} in org ${organizationId}`);
+    
     // Intentar obtener rol desde Keycloak (fuente de verdad)
-    const kcRole = await keycloakAdmin.getUserRoleInOrganization(userId, organizationId);
+    const kcRole = await keycloakAdmin.getUserRoleInOrganization(keycloakUserId, organizationId);
+    
+    console.log(`[getUserOrganizationRole] Keycloak role result:`, kcRole);
     
     if (kcRole) {
       return kcRole;
     }
     
     // Fallback: Consultar BD local si Keycloak no tiene el rol
-    // Esto es temporal para compatibilidad con datos existentes
-    console.warn(`[getUserOrganizationRole] Rol no encontrado en Keycloak para user ${userId} en org ${organizationId}, usando BD local`);
+    // IMPORTANTE: Primero necesitamos encontrar al usuario en BD local por su email
+    console.warn(`[getUserOrganizationRole] Rol no encontrado en Keycloak para user ${keycloakUserId} en org ${organizationId}, buscando en BD local`);
     
+    // Obtener información del usuario desde Keycloak
+    const keycloakUser = await keycloakAdmin.getUserById(keycloakUserId);
+    if (!keycloakUser || !keycloakUser.email) {
+      console.warn(`[getUserOrganizationRole] No se pudo obtener información del usuario desde Keycloak`);
+      return null;
+    }
+    
+    // Buscar usuario en BD local por email
+    const [localUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, keycloakUser.email))
+      .limit(1);
+    
+    if (!localUser) {
+      console.warn(`[getUserOrganizationRole] Usuario no encontrado en BD local con email ${keycloakUser.email}`);
+      return null;
+    }
+    
+    // Ahora buscar membresía usando el ID de BD local
     const [membership] = await db
       .select()
       .from(organizationMembers)
       .where(
         and(
-          eq(organizationMembers.userId, userId),
+          eq(organizationMembers.userId, localUser.id),
           eq(organizationMembers.organizationId, organizationId)
         )
       )
       .limit(1);
     
-    // CRITICAL: Normalizar a lowercase para compatibilidad con Keycloak
-    return membership?.role?.toLowerCase() as 'owner' | 'admin' | 'member' || null;
+    const role = membership?.role?.toLowerCase() as 'owner' | 'admin' | 'member' || null;
+    console.log(`[getUserOrganizationRole] Local DB role result:`, role);
+    
+    return role;
   } catch (error) {
     console.error('[getUserOrganizationRole] Error al obtener rol:', error);
-    
-    // En caso de error con Keycloak, usar BD local como fallback
-    const [membership] = await db
-      .select()
-      .from(organizationMembers)
-      .where(
-        and(
-          eq(organizationMembers.userId, userId),
-          eq(organizationMembers.organizationId, organizationId)
-        )
-      )
-      .limit(1);
-    
-    // CRITICAL: Normalizar a lowercase para compatibilidad con Keycloak
-    return membership?.role?.toLowerCase() as 'owner' | 'admin' | 'member' || null;
+    return null;
   }
 }
 
