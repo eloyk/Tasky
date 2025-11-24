@@ -705,6 +705,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/organizations", isAuthenticated, async (req: any, res) => {
     try {
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub; // ID de Keycloak (el correcto)
+      
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
@@ -712,14 +714,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      console.log("[API] Creating organization for user:", user.id);
+      console.log("[API] Creating organization for user. DB ID:", user.id, "Keycloak ID:", keycloakUserId);
 
       // CRITICAL: Verificar que el usuario tenga permiso para crear organizaciones
-      const canCreate = await keycloakAdmin.canCreateOrganizations(user.id);
+      // Usar el ID de Keycloak, no el de la BD local
+      const canCreate = await keycloakAdmin.canCreateOrganizations(keycloakUserId);
       console.log("[API] User can create organizations:", canCreate);
       
       if (!canCreate) {
-        console.error("[API] User", user.id, "does not have permission to create organizations");
+        console.error("[API] User", keycloakUserId, "does not have permission to create organizations");
         return res.status(403).json({ 
           message: "No tienes permiso para crear organizaciones. Contacta al administrador del sistema." 
         });
@@ -738,7 +741,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Crear grupo y roles en Keycloak para la organización
       try {
         await keycloakAdmin.createOrganizationGroup(organization.id, organization.name);
-        await keycloakAdmin.assignUserToOrganizationRole(user.id, organization.id, 'owner');
+        // Usar el ID de Keycloak para asignar el rol
+        await keycloakAdmin.assignUserToOrganizationRole(keycloakUserId, organization.id, 'owner');
         console.log("[API] Roles de Keycloak creados y asignados para organización:", organization.id);
       } catch (kcError) {
         console.error("[API] Error al crear roles en Keycloak:", kcError);
