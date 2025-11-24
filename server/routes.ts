@@ -791,7 +791,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // List all users from Keycloak (for admin purposes)
+  // List all users from Keycloak (for adding members to organizations)
   app.get("/api/keycloak/users", isAuthenticated, async (req: any, res) => {
     try {
       const userEmail = req.user.claims.email;
@@ -802,12 +802,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Only users with organization-creators permission can list all users
-      const canCreate = await keycloakAdmin.canCreateOrganizations(keycloakUserId);
-      
-      if (!canCreate) {
+      // Check if user can create organizations
+      const canCreateOrgs = await keycloakAdmin.canCreateOrganizations(keycloakUserId);
+
+      // If not an organization-creator, check if user is owner/admin of at least one org
+      let isOrgAdminOrOwner = false;
+      if (!canCreateOrgs) {
+        // Use Keycloak directly to check user's roles in organizations (more efficient)
+        const hasAdminRole = await keycloakAdmin.isAdminOfAnyOrganization(keycloakUserId);
+        isOrgAdminOrOwner = hasAdminRole;
+      }
+
+      if (!isOrgAdminOrOwner && !canCreateOrgs) {
         return res.status(403).json({ 
-          message: "No tienes permiso para ver todos los usuarios" 
+          message: "No tienes permiso para ver la lista de usuarios" 
         });
       }
 

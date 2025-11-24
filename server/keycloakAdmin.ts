@@ -219,6 +219,35 @@ class KeycloakAdminService {
   }
 
   /**
+   * Verifica si un usuario es owner o admin de al menos una organización
+   * Usa Keycloak como fuente de verdad (más eficiente que iterar sobre todas las orgs)
+   */
+  async isAdminOfAnyOrganization(userId: string): Promise<boolean> {
+    await this.initialize();
+
+    try {
+      // Obtener todos los grupos del usuario
+      const userGroups = await this.client.users.listGroups({ id: userId });
+
+      // Buscar grupos con atributo organizationId y role = owner o admin
+      for (const group of userGroups) {
+        const attributes = group.attributes;
+        const role = attributes?.role?.[0];
+        const hasOrgId = attributes?.organizationId?.[0];
+        
+        if (hasOrgId && (role === 'owner' || role === 'admin')) {
+          return true;
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('[Keycloak Admin] Error al verificar rol de admin:', error);
+      return false;
+    }
+  }
+
+  /**
    * Verifica si un usuario tiene permiso para crear organizaciones
    * Solo usuarios con el rol especial 'organization-creator' pueden crear orgs
    */
