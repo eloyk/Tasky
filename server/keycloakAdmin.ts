@@ -287,6 +287,130 @@ class KeycloakAdminService {
       throw error;
     }
   }
+
+  /**
+   * Lista todos los usuarios de Keycloak
+   */
+  async listAllUsers(): Promise<Array<{
+    id: string;
+    username: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    enabled: boolean;
+  }>> {
+    await this.initialize();
+
+    try {
+      const users = await this.client.users.find({ max: 1000 });
+      
+      return users.map(user => ({
+        id: user.id!,
+        username: user.username || '',
+        email: user.email || '',
+        firstName: user.firstName,
+        lastName: user.lastName,
+        enabled: user.enabled ?? true,
+      }));
+    } catch (error) {
+      console.error('[Keycloak Admin] Error al listar usuarios:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtiene información detallada de un usuario de Keycloak por su ID
+   */
+  async getUserById(userId: string): Promise<{
+    id: string;
+    username: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    enabled: boolean;
+  } | null> {
+    await this.initialize();
+
+    try {
+      const user = await this.client.users.findOne({ id: userId });
+      
+      if (!user) {
+        return null;
+      }
+
+      return {
+        id: user.id!,
+        username: user.username || '',
+        email: user.email || '',
+        firstName: user.firstName,
+        lastName: user.lastName,
+        enabled: user.enabled ?? true,
+      };
+    } catch (error) {
+      console.error('[Keycloak Admin] Error al obtener usuario:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Obtiene todos los miembros de una organización desde Keycloak
+   */
+  async getOrganizationMembers(organizationId: string): Promise<Array<{
+    userId: string;
+    username: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    role: 'owner' | 'admin' | 'member';
+  }>> {
+    await this.initialize();
+
+    try {
+      // Buscar el grupo de la organización
+      const groups = await this.client.groups.find({
+        search: `org-${organizationId}`,
+      });
+
+      if (groups.length === 0) {
+        console.warn(`[Keycloak Admin] No se encontró grupo para organización ${organizationId}`);
+        return [];
+      }
+
+      const orgGroup = groups[0];
+      const subgroups = await this.client.groups.listSubGroups({ parentId: orgGroup.id! });
+
+      const members: Array<{
+        userId: string;
+        username: string;
+        email: string;
+        firstName?: string;
+        lastName?: string;
+        role: 'owner' | 'admin' | 'member';
+      }> = [];
+
+      // Obtener miembros de cada rol
+      for (const subgroup of subgroups) {
+        const role = subgroup.name as 'owner' | 'admin' | 'member';
+        const groupMembers = await this.client.groups.listMembers({ id: subgroup.id! });
+
+        for (const user of groupMembers) {
+          members.push({
+            userId: user.id!,
+            username: user.username || '',
+            email: user.email || '',
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role,
+          });
+        }
+      }
+
+      return members;
+    } catch (error) {
+      console.error('[Keycloak Admin] Error al obtener miembros de organización:', error);
+      throw error;
+    }
+  }
 }
 
 export const keycloakAdmin = new KeycloakAdminService();
