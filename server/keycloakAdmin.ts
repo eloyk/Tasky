@@ -226,16 +226,22 @@ class KeycloakAdminService {
     await this.initialize();
 
     try {
+      console.log(`[Keycloak Admin] Verificando permiso de creación para usuario: ${userId}`);
+      
       // Buscar si el usuario pertenece al grupo especial de creadores de organizaciones
       const userGroups = await this.client.users.listGroups({ id: userId });
+      
+      console.log(`[Keycloak Admin] Grupos del usuario ${userId}:`, userGroups.map(g => g.name));
       
       const hasCreatorRole = userGroups.some(
         group => group.name === 'organization-creators'
       );
 
+      console.log(`[Keycloak Admin] Usuario ${userId} tiene permiso de creación: ${hasCreatorRole}`);
       return hasCreatorRole;
     } catch (error) {
       console.error('[Keycloak Admin] Error al verificar permiso de creación:', error);
+      console.error('[Keycloak Admin] Error details:', error);
       return false;
     }
   }
