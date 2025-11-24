@@ -10,6 +10,7 @@ import { MainLayout } from "@/components/main-layout";
 import Landing from "@/pages/landing";
 import Home from "@/pages/home";
 import Organizations from "@/pages/organizations";
+import OrganizationMembers from "@/pages/organization-members";
 import Projects from "@/pages/projects";
 import Boards from "@/pages/boards";
 import BoardView from "@/pages/board-view";
@@ -74,6 +75,7 @@ function Router() {
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/organizations" component={Organizations} />
+          <Route path="/organizations/:id/members" component={OrganizationMembers} />
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:id/boards">
             {(params) => <LegacyBoardsRedirect projectId={params.id} />}

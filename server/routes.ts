@@ -811,8 +811,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const users = await keycloakAdmin.listAllUsers();
-      res.json(users);
+      const keycloakUsers = await keycloakAdmin.listAllUsers();
+      res.json(keycloakUsers);
     } catch (error) {
       console.error("[API] Error listing Keycloak users:", error);
       res.status(500).json({ message: "Failed to list users" });
@@ -1053,6 +1053,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error adding organization member:", error);
       res.status(400).json({ 
         message: "No se pudo agregar el miembro",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Remove member from organization (using Keycloak as source of truth)
+  app.delete("/api/organizations/:id/members/:userId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id, userId } = req.params;
+      const userEmail = req.user.claims.email;
+      const requestingKeycloakId = req.user.claims.sub;
+      
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Check if requester is admin or owner (using Keycloak as source of truth)
+      const requesterRole = await getUserOrganizationRole(requestingKeycloakId, id);
+      
+      if (!requesterRole || (requesterRole !== 'owner' && requesterRole !== 'admin')) {
+        return res.status(403).json({ message: "No tienes autorización para remover miembros" });
+      }
+
+      // Cannot remove owners
+      const targetUserRole = await getUserOrganizationRole(userId, id);
+      if (targetUserRole === 'owner') {
+        return res.status(403).json({ message: "No se puede remover al propietario de la organización" });
+      }
+
+      // Remove from Keycloak (source of truth)
+      await keycloakAdmin.removeUserFromOrganization(userId, id);
+
+      // Also remove from local database for compatibility
+      const keycloakUser = await keycloakAdmin.getUserById(userId);
+      if (keycloakUser) {
+        const [localUser] = await db.select().from(users).where(eq(users.email, keycloakUser.email));
+        if (localUser) {
+          await db
+            .delete(organizationMembers)
+            .where(and(
+              eq(organizationMembers.organizationId, id),
+              eq(organizationMembers.userId, localUser.id)
+            ));
+        }
+      }
+
+      res.json({ message: "Miembro removido exitosamente" });
+    } catch (error) {
+      console.error("Error removing organization member:", error);
+      res.status(400).json({ 
+        message: "No se pudo remover el miembro",
         error: error instanceof Error ? error.message : String(error)
       });
     }

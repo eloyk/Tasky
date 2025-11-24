@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Building2, Plus, Pencil, Trash2, ShieldAlert } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, ShieldAlert, Users } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -284,7 +284,16 @@ export default function Organizations() {
                   <CardDescription>{org.description}</CardDescription>
                 )}
               </CardHeader>
-              <CardFooter className="flex gap-2">
+              <CardFooter className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLocation(`/organizations/${org.id}/members`)}
+                  data-testid={`button-members-${org.id}`}
+                >
+                  <Users className="w-4 h-4 mr-1" />
+                  Miembros
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
