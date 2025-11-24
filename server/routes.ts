@@ -386,18 +386,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+  app.get('/api/auth/debug', isAuthenticated, async (req: any, res) => {
+    try {
+      console.log("[DEBUG] req.user:", JSON.stringify(req.user, null, 2));
+      console.log("[DEBUG] req.isAuthenticated():", req.isAuthenticated());
+      res.json({
+        isAuthenticated: req.isAuthenticated(),
+        user: req.user,
+        claims: req.user?.claims,
+      });
+    } catch (error) {
+      console.error("[DEBUG] Error:", error);
+      res.status(500).json({ message: "Debug failed", error: String(error) });
+    }
+  });
+
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
+      console.log("[/api/auth/user] Starting, req.user exists:", !!req.user);
+      console.log("[/api/auth/user] req.user.claims:", req.user?.claims);
+      
       const userEmail = req.user?.claims?.email;
       if (!userEmail) {
         console.error("[/api/auth/user] No email found in req.user");
+        console.error("[/api/auth/user] Full req.user:", JSON.stringify(req.user, null, 2));
         return res.status(401).json({ message: "No user email in session" });
       }
       
+      console.log("[/api/auth/user] Looking for user with email:", userEmail);
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       if (!user) {
         console.error(`[/api/auth/user] User not found in database: ${userEmail}`);
-        return res.status(404).json({ message: "User not found" });
+        console.error("[/api/auth/user] Attempting to create user from Keycloak claims...");
+        
+        // Try to create the user from Keycloak claims
+        try {
+          const claims = req.user.claims;
+          const newUser = await storage.upsertUser({
+            id: claims.sub,
+            email: claims.email,
+            firstName: claims.given_name || claims.name?.split(" ")[0] || "",
+            lastName: claims.family_name || claims.name?.split(" ").slice(1).join(" ") || "",
+            profileImageUrl: claims.picture,
+          });
+          console.log("[/api/auth/user] User created:", newUser.email);
+          
+          // Get user's primary organization membership (first one)
+          const [membership] = await db
+            .select()
+            .from(organizationMembers)
+            .where(eq(organizationMembers.userId, newUser.id))
+            .limit(1);
+          
+          return res.json({
+            ...newUser,
+            organizationId: membership?.organizationId || null,
+            role: membership?.role || null,
+          });
+        } catch (createError) {
+          console.error("[/api/auth/user] Failed to create user:", createError);
+          return res.status(500).json({ message: "Failed to create user" });
+        }
       }
       
       // Get user's primary organization membership (first one)
@@ -407,7 +456,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(organizationMembers.userId, user.id))
         .limit(1);
       
-      console.log("[/api/auth/user] Returning user:", user.email);
+      console.log("[/api/auth/user] Returning user:", user.email, "org:", membership?.organizationId);
       res.json({
         ...user,
         organizationId: membership?.organizationId || null,
