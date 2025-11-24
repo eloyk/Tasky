@@ -7,6 +7,7 @@ import KcAdminClient from '@keycloak/keycloak-admin-client';
 class KeycloakAdminService {
   private client: KcAdminClient;
   private initialized = false;
+  private tokenExpiresAt: number = 0;
 
   constructor() {
     this.client = new KcAdminClient({
@@ -15,9 +16,19 @@ class KeycloakAdminService {
     });
   }
 
-  async initialize() {
-    if (this.initialized) return;
+  /**
+   * Verifica si el token ha expirado o está próximo a expirar (dentro de 30 segundos)
+   */
+  private isTokenExpired(): boolean {
+    const now = Date.now();
+    // Renovar si el token expira en los próximos 30 segundos
+    return now >= (this.tokenExpiresAt - 30000);
+  }
 
+  /**
+   * Autentica o renueva el token con Keycloak
+   */
+  private async authenticate() {
     try {
       await this.client.auth({
         grantType: 'client_credentials',
@@ -25,11 +36,23 @@ class KeycloakAdminService {
         clientSecret: process.env.KEYCLOAK_CLIENT_SECRET!,
       });
 
+      // El token típicamente expira en 5 minutos (300 segundos)
+      // Usar el valor del token si está disponible, sino usar 5 minutos por defecto
+      const expiresIn = (this.client.getAccessToken() as any)?.expiresIn || 300;
+      this.tokenExpiresAt = Date.now() + (expiresIn * 1000);
+      
+      console.log('[Keycloak Admin] Token autenticado. Expira en', expiresIn, 'segundos');
+    } catch (error) {
+      console.error('[Keycloak Admin] Error al autenticar:', error);
+      throw error;
+    }
+  }
+
+  async initialize() {
+    if (!this.initialized || this.isTokenExpired()) {
+      await this.authenticate();
       this.initialized = true;
       console.log('[Keycloak Admin] Cliente inicializado correctamente');
-    } catch (error) {
-      console.error('[Keycloak Admin] Error al inicializar cliente:', error);
-      throw error;
     }
   }
 
