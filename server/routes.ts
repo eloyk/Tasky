@@ -77,7 +77,8 @@ async function getUserOrganizationRole(
       )
       .limit(1);
     
-    return membership?.role as 'owner' | 'admin' | 'member' || null;
+    // CRITICAL: Normalizar a lowercase para compatibilidad con Keycloak
+    return membership?.role?.toLowerCase() as 'owner' | 'admin' | 'member' || null;
   } catch (error) {
     console.error('[getUserOrganizationRole] Error al obtener rol:', error);
     
@@ -93,7 +94,8 @@ async function getUserOrganizationRole(
       )
       .limit(1);
     
-    return membership?.role as 'owner' | 'admin' | 'member' || null;
+    // CRITICAL: Normalizar a lowercase para compatibilidad con Keycloak
+    return membership?.role?.toLowerCase() as 'owner' | 'admin' | 'member' || null;
   }
 }
 

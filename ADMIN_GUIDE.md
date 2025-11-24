@@ -95,6 +95,58 @@ Muestra todos los tableros Kanban de la organización.
 
 ---
 
+## 🔐 Sistema de Roles y Permisos (Keycloak)
+
+### Gestión de Roles
+
+**Tasky RD utiliza Keycloak como sistema de autenticación y autorización.** Los roles de los usuarios se gestionan desde Keycloak, no desde la base de datos local.
+
+#### Roles por Organización
+
+Cada organización tiene 3 roles automáticamente creados en Keycloak:
+- **Owner (Propietario)**: Control total sobre la organización
+- **Admin (Administrador)**: Puede gestionar equipos, proyectos y tableros
+- **Member (Miembro)**: Acceso básico según asignaciones de equipos
+
+Estos roles se crean automáticamente en Keycloak cuando se crea una nueva organización.
+
+### Permiso de Creación de Organizaciones
+
+Por seguridad, **solo usuarios designados pueden crear nuevas organizaciones**. 
+
+#### ¿Cómo otorgar este permiso?
+
+**Opción 1: A través de la API (Recomendado para el primer usuario)**
+
+Para otorgar el permiso al primer usuario administrador, puedes usar la API:
+
+```bash
+# Primero, obtén el ID del usuario desde Keycloak o la base de datos
+# Luego llama al endpoint (requiere estar autenticado como usuario con este permiso)
+
+POST /api/admin/grant-org-creator/{userId}
+```
+
+**Opción 2: Manualmente en Keycloak**
+
+1. Accede a la consola de administración de Keycloak
+2. Ve a tu realm
+3. Navega a **Groups** > Busca o crea el grupo `organization-creators`
+4. Agrega el usuario a este grupo
+
+#### ¿Quién puede otorgar este permiso?
+
+Solo usuarios que **YA tienen** el permiso de crear organizaciones pueden otorgarlo a otros usuarios.
+
+### Notas Importantes
+
+- ⚠️ Los roles se leen **SIEMPRE** desde Keycloak (fuente de verdad)
+- La base de datos local mantiene una copia por compatibilidad, pero **Keycloak prevalece**
+- Si hay discrepancias entre Keycloak y la BD local, **Keycloak gana**
+- Los cambios de roles deben hacerse en Keycloak para que sean efectivos
+
+---
+
 ## Preguntas Frecuentes
 
 ### ¿Quién puede acceder al Centro de Control?
