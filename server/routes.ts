@@ -674,10 +674,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/organizations", isAuthenticated, async (req: any, res) => {
     try {
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
+      }
+
+      // CRITICAL: Solo usuarios con permiso organization-creators pueden acceder a esta página
+      const canCreate = await keycloakAdmin.canCreateOrganizations(keycloakUserId);
+      
+      if (!canCreate) {
+        return res.status(403).json({ 
+          message: "No tienes permiso para acceder a esta sección. Solo administradores del sistema pueden gestionar organizaciones." 
+        });
       }
 
       // Get organizations where user is a member

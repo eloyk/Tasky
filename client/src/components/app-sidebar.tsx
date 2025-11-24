@@ -41,6 +41,9 @@ const adminMenuItems = [
     url: "/admin",
     icon: Shield,
   },
+];
+
+const systemAdminMenuItems = [
   {
     title: "Organizaciones",
     url: "/organizations",
@@ -55,7 +58,12 @@ export function AppSidebar() {
     queryKey: ['/api/auth/user'],
   });
 
+  const { data: canCreateOrgs } = useQuery<{ canCreate: boolean }>({
+    queryKey: ['/api/auth/can-create-organizations'],
+  });
+
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'owner';
+  const isSystemAdmin = canCreateOrgs?.canCreate || false;
 
   return (
     <Sidebar>
@@ -99,6 +107,30 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {adminMenuItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location === item.url}
+                      data-testid={`nav-${item.title.toLowerCase()}`}
+                    >
+                      <Link href={item.url}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {isSystemAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Sistema</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {systemAdminMenuItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
                       asChild

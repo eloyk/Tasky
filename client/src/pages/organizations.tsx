@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Building2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, ShieldAlert } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import type { Organization, InsertOrganization } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,17 +38,31 @@ export default function Organizations() {
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
   const { toast } = useToast();
-
-  const { data: organizations = [], isLoading } = useQuery<Organization[]>({
-    queryKey: ["/api/organizations"],
-  });
+  const [, setLocation] = useLocation();
 
   // Verificar si el usuario puede crear organizaciones
-  const { data: permissions } = useQuery<{ canCreate: boolean }>({
+  const { data: permissions, isLoading: isLoadingPermissions } = useQuery<{ canCreate: boolean }>({
     queryKey: ["/api/auth/can-create-organizations"],
   });
 
   const canCreateOrganizations = permissions?.canCreate ?? false;
+
+  // Redirigir si el usuario no tiene permiso
+  useEffect(() => {
+    if (!isLoadingPermissions && !canCreateOrganizations) {
+      toast({
+        title: "Acceso denegado",
+        description: "No tienes permiso para acceder a esta sección.",
+        variant: "destructive",
+      });
+      setLocation("/");
+    }
+  }, [canCreateOrganizations, isLoadingPermissions, setLocation, toast]);
+
+  const { data: organizations = [], isLoading } = useQuery<Organization[]>({
+    queryKey: ["/api/organizations"],
+    enabled: canCreateOrganizations, // Solo cargar si tiene permiso
+  });
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertOrganization) => {
@@ -151,7 +166,8 @@ export default function Organizations() {
     setDeleteDialogOpen(true);
   };
 
-  if (isLoading) {
+  // Mostrar pantalla de carga mientras se verifican permisos
+  if (isLoadingPermissions || isLoading) {
     return (
       <div className="p-8">
         <div className="space-y-4">
@@ -164,6 +180,11 @@ export default function Organizations() {
         </div>
       </div>
     );
+  }
+
+  // No mostrar nada si no tiene permiso (se redirigirá automáticamente)
+  if (!canCreateOrganizations) {
+    return null;
   }
 
   return (
