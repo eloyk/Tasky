@@ -125,6 +125,8 @@ export default function Admin() {
     queryKey: ['/api/auth/user'],
   });
 
+  console.log("[AdminPanel] currentUser:", currentUser, "isLoading:", isLoading);
+
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['/api/projects'],
     enabled: !!currentUser,
