@@ -1,4 +1,4 @@
-import { Kanban, Home, Settings, Users, Shield, LogOut } from "lucide-react";
+import { Kanban, Home, Settings, Users, Shield, LogOut, Building2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -40,6 +40,11 @@ const adminMenuItems = [
     title: "Centro de Control",
     url: "/admin",
     icon: Shield,
+  },
+  {
+    title: "Organizaciones",
+    url: "/organizations",
+    icon: Building2,
   },
 ];
 
