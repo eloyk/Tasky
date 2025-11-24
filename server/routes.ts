@@ -46,6 +46,57 @@ import { createDefaultBoardColumns } from "./projectHelpers.js";
 import type { Task, Board, Project } from "../shared/schema.js";
 import { keycloakAdmin } from "./keycloakAdmin.js";
 
+/**
+ * Obtiene el rol de un usuario en una organización.
+ * PRIORIDAD: Keycloak (fuente de verdad) > BD local (fallback temporal)
+ */
+async function getUserOrganizationRole(
+  userId: string,
+  organizationId: string
+): Promise<'owner' | 'admin' | 'member' | null> {
+  try {
+    // Intentar obtener rol desde Keycloak (fuente de verdad)
+    const kcRole = await keycloakAdmin.getUserRoleInOrganization(userId, organizationId);
+    
+    if (kcRole) {
+      return kcRole;
+    }
+    
+    // Fallback: Consultar BD local si Keycloak no tiene el rol
+    // Esto es temporal para compatibilidad con datos existentes
+    console.warn(`[getUserOrganizationRole] Rol no encontrado en Keycloak para user ${userId} en org ${organizationId}, usando BD local`);
+    
+    const [membership] = await db
+      .select()
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.userId, userId),
+          eq(organizationMembers.organizationId, organizationId)
+        )
+      )
+      .limit(1);
+    
+    return membership?.role as 'owner' | 'admin' | 'member' || null;
+  } catch (error) {
+    console.error('[getUserOrganizationRole] Error al obtener rol:', error);
+    
+    // En caso de error con Keycloak, usar BD local como fallback
+    const [membership] = await db
+      .select()
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.userId, userId),
+          eq(organizationMembers.organizationId, organizationId)
+        )
+      )
+      .limit(1);
+    
+    return membership?.role as 'owner' | 'admin' | 'member' || null;
+  }
+}
+
 // Helper function to get task with assignee information
 async function getTaskWithAssignee(taskId: string) {
   const result = await db
@@ -132,20 +183,11 @@ async function verifyBoardAccess(boardId: string, userId: string): Promise<{ boa
   
   const project = projectResult[0];
   
-  // CRITICAL: ALWAYS verify user is member of project's organization first (tenant isolation)
-  const [orgMembership] = await db
-    .select()
-    .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, userId),
-        eq(organizationMembers.organizationId, project.organizationId)
-      )
-    )
-    .limit(1);
+  // CRITICAL: Obtener rol del usuario desde Keycloak (fuente de verdad)
+  const userRole = await getUserOrganizationRole(userId, project.organizationId);
   
   // User MUST be organization member - this is required for tenant isolation
-  if (!orgMembership) {
+  if (!userRole) {
     return {
       board,
       allowed: false
@@ -153,7 +195,7 @@ async function verifyBoardAccess(boardId: string, userId: string): Promise<{ boa
   }
   
   // Admins and Owners have universal access (role-based override)
-  if (orgMembership.role === OrganizationRole.ADMIN || orgMembership.role === OrganizationRole.OWNER) {
+  if (userRole === 'admin' || userRole === 'owner') {
     return {
       board,
       allowed: true
@@ -207,20 +249,11 @@ async function verifyProjectAccess(projectId: string, userId: string): Promise<{
   
   const project = projectResult[0];
   
-  // CRITICAL: ALWAYS verify user is member of project's organization first (tenant isolation)
-  const [orgMembership] = await db
-    .select()
-    .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, userId),
-        eq(organizationMembers.organizationId, project.organizationId)
-      )
-    )
-    .limit(1);
+  // CRITICAL: Obtener rol del usuario desde Keycloak (fuente de verdad)
+  const userRole = await getUserOrganizationRole(userId, project.organizationId);
   
   // User MUST be organization member - this is required for tenant isolation
-  if (!orgMembership) {
+  if (!userRole) {
     return {
       project,
       allowed: false
@@ -228,7 +261,7 @@ async function verifyProjectAccess(projectId: string, userId: string): Promise<{
   }
   
   // Admins and Owners have universal access (role-based override)
-  if (orgMembership.role === OrganizationRole.ADMIN || orgMembership.role === OrganizationRole.OWNER) {
+  if (userRole === 'admin' || userRole === 'owner') {
     return {
       project,
       allowed: true
