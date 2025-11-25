@@ -1393,6 +1393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const adminOrgIds = memberships
         .filter(m => m.role === OrganizationRole.OWNER || m.role === OrganizationRole.ADMIN)
         .map(m => m.organizationId);
+      console.log("[GET /api/projects] Admin org IDs:", adminOrgIds);
 
       // Get user's team memberships for filtering
       const userTeamMemberships = await db
@@ -1400,6 +1401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(teamMembers)
         .where(eq(teamMembers.userId, user.id));
       const userTeamIds = userTeamMemberships.map(tm => tm.teamId);
+      console.log("[GET /api/projects] User team IDs:", userTeamIds);
 
       // Get org IDs where user is only a member (not admin/owner)
       const memberOnlyOrgIds = memberships
@@ -1453,14 +1455,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .from(projectTeams)
               .where(eq(projectTeams.projectId, project.id));
 
+            console.log(`[GET /api/projects] Project ${project.name} (${project.id}) has ${projectTeamAssignments.length} team assignments:`, projectTeamAssignments.map(pt => pt.teamId));
+
             // If no teams assigned, all org members have access
             if (projectTeamAssignments.length === 0) {
+              console.log(`[GET /api/projects] Project ${project.name} has no team assignments - granting access`);
               return project;
             }
 
             // If teams are assigned, check if user is member of any assigned team
             const assignedTeamIds = projectTeamAssignments.map(pt => pt.teamId);
             const hasAccess = userTeamIds.some(teamId => assignedTeamIds.includes(teamId));
+            
+            console.log(`[GET /api/projects] Project ${project.name} - user teams: ${userTeamIds}, assigned teams: ${assignedTeamIds}, hasAccess: ${hasAccess}`);
             
             return hasAccess ? project : null;
           })
