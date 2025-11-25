@@ -179,7 +179,9 @@ async function verifyTaskAccess(taskId: string, userId: string): Promise<{ task:
 }
 
 // Helper function to verify user has access to a board
-async function verifyBoardAccess(boardId: string, userId: string): Promise<{ board: Board | null; allowed: boolean }> {
+// keycloakUserId: ID de Keycloak (UUID) para verificar rol en Keycloak
+// localUserId: ID local de la base de datos para verificar membresías en tablas locales
+async function verifyBoardAccess(boardId: string, keycloakUserId: string, localUserId: string): Promise<{ board: Board | null; allowed: boolean }> {
   const boardResult = await db.select().from(boards).where(eq(boards.id, boardId)).limit(1);
   
   if (boardResult.length === 0) {
@@ -198,7 +200,7 @@ async function verifyBoardAccess(boardId: string, userId: string): Promise<{ boa
   const project = projectResult[0];
   
   // CRITICAL: Obtener rol del usuario desde Keycloak (fuente de verdad)
-  const userRole = await getUserOrganizationRole(userId, project.organizationId);
+  const userRole = await getUserOrganizationRole(keycloakUserId, project.organizationId);
   
   // User MUST be organization member - this is required for tenant isolation
   if (!userRole) {
@@ -232,6 +234,7 @@ async function verifyBoardAccess(boardId: string, userId: string): Promise<{ boa
   }
   
   // Board HAS team restrictions - verify regular member is in an assigned team
+  // Use localUserId for team membership queries (local DB tables)
   const teamAccess = await db
     .select()
     .from(teamMembers)
@@ -239,7 +242,7 @@ async function verifyBoardAccess(boardId: string, userId: string): Promise<{ boa
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
     .where(
       and(
-        eq(teamMembers.userId, userId),
+        eq(teamMembers.userId, localUserId),
         eq(boardTeams.boardId, boardId),
         // CRITICAL: Ensure team belongs to same organization (defense in depth)
         eq(teams.organizationId, project.organizationId)
@@ -254,7 +257,9 @@ async function verifyBoardAccess(boardId: string, userId: string): Promise<{ boa
 }
 
 // Helper function to verify user has access to a project
-async function verifyProjectAccess(projectId: string, userId: string): Promise<{ project: Project | null; allowed: boolean }> {
+// keycloakUserId: ID de Keycloak (UUID) para verificar rol en Keycloak
+// localUserId: ID local de la base de datos para verificar membresías en tablas locales
+async function verifyProjectAccess(projectId: string, keycloakUserId: string, localUserId: string): Promise<{ project: Project | null; allowed: boolean }> {
   const projectResult = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   
   if (projectResult.length === 0) {
@@ -264,7 +269,7 @@ async function verifyProjectAccess(projectId: string, userId: string): Promise<{
   const project = projectResult[0];
   
   // CRITICAL: Obtener rol del usuario desde Keycloak (fuente de verdad)
-  const userRole = await getUserOrganizationRole(userId, project.organizationId);
+  const userRole = await getUserOrganizationRole(keycloakUserId, project.organizationId);
   
   // User MUST be organization member - this is required for tenant isolation
   if (!userRole) {
@@ -298,6 +303,7 @@ async function verifyProjectAccess(projectId: string, userId: string): Promise<{
   }
   
   // Project HAS team restrictions - verify regular member is in an assigned team
+  // Use localUserId for team membership queries (local DB tables)
   const teamAccess = await db
     .select()
     .from(teamMembers)
@@ -305,7 +311,7 @@ async function verifyProjectAccess(projectId: string, userId: string): Promise<{
     .innerJoin(teams, eq(teamMembers.teamId, teams.id))
     .where(
       and(
-        eq(teamMembers.userId, userId),
+        eq(teamMembers.userId, localUserId),
         eq(projectTeams.projectId, projectId),
         // CRITICAL: Ensure team belongs to same organization (defense in depth)
         eq(teams.organizationId, project.organizationId)
@@ -2429,6 +2435,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
@@ -2436,7 +2443,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // CRITICAL: Verify user has access to the board
-      const { board, allowed } = await verifyBoardAccess(id, user.id);
+      const { board, allowed } = await verifyBoardAccess(id, keycloakUserId, user.id);
       
       if (!board) {
         return res.status(404).json({ message: "Board not found" });
@@ -2467,6 +2474,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
@@ -2474,7 +2482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // CRITICAL: Verify user has access to the board
-      const { board, allowed } = await verifyBoardAccess(id, user.id);
+      const { board, allowed } = await verifyBoardAccess(id, keycloakUserId, user.id);
       
       if (!board) {
         return res.status(404).json({ message: "Board not found" });
@@ -2495,6 +2503,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id: boardId } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
@@ -2502,7 +2511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // CRITICAL: Verify user has access to the board
-      const { board, allowed } = await verifyBoardAccess(boardId, user.id);
+      const { board, allowed } = await verifyBoardAccess(boardId, keycloakUserId, user.id);
       
       if (!board) {
         return res.status(404).json({ message: "Board not found" });
@@ -2530,6 +2539,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
@@ -2537,7 +2547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // CRITICAL: Verify user has access to the board
-      const { board, allowed } = await verifyBoardAccess(id, user.id);
+      const { board, allowed } = await verifyBoardAccess(id, keycloakUserId, user.id);
       
       if (!board) {
         return res.status(404).json({ message: "Board not found" });
@@ -2566,6 +2576,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
@@ -2573,7 +2584,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // CRITICAL: Verify user has access to the board
-      const { board, allowed } = await verifyBoardAccess(id, user.id);
+      const { board, allowed } = await verifyBoardAccess(id, keycloakUserId, user.id);
       
       if (!board) {
         return res.status(404).json({ message: "Board not found" });
@@ -2669,13 +2680,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { boardId } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const { allowed } = await verifyBoardAccess(boardId, user.id);
+      const { allowed } = await verifyBoardAccess(boardId, keycloakUserId, user.id);
       if (!allowed) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -2965,13 +2977,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { boardId } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const { allowed } = await verifyBoardAccess(boardId, user.id);
+      const { allowed } = await verifyBoardAccess(boardId, keycloakUserId, user.id);
       if (!allowed) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -2990,13 +3003,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { boardId } = req.params;
       const { teamId, permission } = req.body;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const { board, allowed } = await verifyBoardAccess(boardId, user.id);
+      const { board, allowed } = await verifyBoardAccess(boardId, keycloakUserId, user.id);
       if (!board || !allowed) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -3032,13 +3046,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { boardId, teamId } = req.params;
       const { permission } = req.body;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const { board, allowed } = await verifyBoardAccess(boardId, user.id);
+      const { board, allowed } = await verifyBoardAccess(boardId, keycloakUserId, user.id);
       if (!board || !allowed) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -3068,13 +3083,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { boardId, teamId } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const { board, allowed } = await verifyBoardAccess(boardId, user.id);
+      const { board, allowed } = await verifyBoardAccess(boardId, keycloakUserId, user.id);
       if (!board || !allowed) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -3112,13 +3128,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { projectId } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const { allowed } = await verifyProjectAccess(projectId, user.id);
+      const { allowed } = await verifyProjectAccess(projectId, keycloakUserId, user.id);
       if (!allowed) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -3137,13 +3154,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { projectId } = req.params;
       const { teamId, permission } = req.body;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const { allowed } = await verifyProjectAccess(projectId, user.id);
+      const { allowed } = await verifyProjectAccess(projectId, keycloakUserId, user.id);
       if (!allowed) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -3179,13 +3197,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { projectId, teamId } = req.params;
       const { permission } = req.body;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const { allowed } = await verifyProjectAccess(projectId, user.id);
+      const { allowed } = await verifyProjectAccess(projectId, keycloakUserId, user.id);
       if (!allowed) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -3215,13 +3234,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { projectId, teamId } = req.params;
       const userEmail = req.user.claims.email;
+      const keycloakUserId = req.user.claims.sub;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const { allowed } = await verifyProjectAccess(projectId, user.id);
+      const { allowed } = await verifyProjectAccess(projectId, keycloakUserId, user.id);
       if (!allowed) {
         return res.status(403).json({ message: "Access denied" });
       }
