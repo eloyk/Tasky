@@ -860,6 +860,5 @@ export default function TeamsPage({ organizationId: propOrgId, hideOrgSelector =
           </DialogContent>
         </Dialog>
       </div>
-    </div>
   );
 }
