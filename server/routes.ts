@@ -2553,6 +2553,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             project: {
               id: board.projectId,
               name: board.projectName,
+              organizationId: board.organizationId,
             },
             teamCount: teamCount[0]?.count || 0,
           };
