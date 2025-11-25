@@ -2954,7 +2954,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/teams/:teamId/members", isAuthenticated, async (req: any, res) => {
     try {
       const { teamId } = req.params;
-      const { userId } = req.body;
+      const { userId: keycloakUserId } = req.body; // userId from frontend is the Keycloak UUID
       const userEmail = req.user.claims.email;
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
@@ -2979,7 +2979,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Only admins can add team members" });
       }
 
-      const member = await storage.addTeamMember({ teamId, userId });
+      // Get the user's info from Keycloak to find their email
+      const keycloakUser = await keycloakAdmin.getUserById(keycloakUserId);
+      if (!keycloakUser || !keycloakUser.email) {
+        return res.status(404).json({ message: "User not found in Keycloak" });
+      }
+
+      // Find the local user by email
+      const [targetUser] = await db.select().from(users).where(eq(users.email, keycloakUser.email));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found in local database" });
+      }
+
+      // Verify target user is a member of the same organization as the team
+      const [targetMembership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, targetUser.id),
+          eq(organizationMembers.organizationId, team.organizationId)
+        ));
+
+      if (!targetMembership) {
+        return res.status(400).json({ message: "User is not a member of this organization" });
+      }
+
+      const member = await storage.addTeamMember({ teamId, userId: targetUser.id });
       res.status(201).json(member);
     } catch (error) {
       console.error("Error adding team member:", error);
