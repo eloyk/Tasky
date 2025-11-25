@@ -402,7 +402,7 @@ export default function Admin() {
         </TabsList>
 
         <TabsContent value="teams" className="space-y-4">
-          <TeamsPage />
+          <TeamsPage organizationId={selectedOrgId} hideOrgSelector />
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-4">
