@@ -2943,7 +2943,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const members = await storage.getTeamMembers(teamId);
-      res.json(members);
+      
+      // Transform members to flatten the user object for frontend compatibility
+      const transformedMembers = members.map((member: any) => ({
+        id: member.id,
+        teamId: member.teamId,
+        userId: member.userId,
+        createdAt: member.createdAt,
+        // Flatten user properties to top level
+        email: member.user?.email || '',
+        firstName: member.user?.firstName || null,
+        lastName: member.user?.lastName || null,
+        profileImageUrl: member.user?.profileImageUrl || null,
+      }));
+      
+      res.json(transformedMembers);
     } catch (error) {
       console.error("Error fetching team members:", error);
       res.status(500).json({ message: "Failed to fetch team members" });
