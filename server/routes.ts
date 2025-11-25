@@ -1343,7 +1343,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("[GET /api/projects] Found", memberships.length, "organization memberships");
 
-      let userProjects;
+      // Define type for project results
+      type ProjectResult = {
+        id: string;
+        name: string;
+        description: string | null;
+        organizationId: string;
+        createdById: string;
+        createdAt: Date | null;
+        updatedAt: Date | null;
+      };
 
       // Get org IDs where user is owner or admin
       const adminOrgIds = memberships
@@ -1357,10 +1366,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(teamMembers.userId, user.id));
       const userTeamIds = userTeamMemberships.map(tm => tm.teamId);
 
+      // Get org IDs where user is only a member (not admin/owner)
+      const memberOnlyOrgIds = memberships
+        .filter(m => m.role === OrganizationRole.MEMBER)
+        .map(m => m.organizationId);
+
+      // Collect all accessible projects
+      const allAccessibleProjects: ProjectResult[] = [];
+
+      // 1. Get ALL projects from orgs where user is admin/owner (no team filtering)
       if (adminOrgIds.length > 0) {
-        // User is owner/admin in at least one org - get ALL projects from those orgs
         console.log("[GET /api/projects] User is owner/admin in", adminOrgIds.length, "orgs");
-        userProjects = await db
+        const adminProjects = await db
           .select({
             id: projects.id,
             name: projects.name,
@@ -1372,11 +1389,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
           .from(projects)
           .where(inArray(projects.organizationId, adminOrgIds));
-      } else {
-        // Regular member - get all projects from orgs where user is member
-        const memberOrgIds = memberships.map(m => m.organizationId);
         
-        const allOrgProjects = await db
+        allAccessibleProjects.push(...adminProjects);
+      }
+
+      // 2. Get projects from orgs where user is only a member (with team filtering)
+      if (memberOnlyOrgIds.length > 0) {
+        console.log("[GET /api/projects] User is member in", memberOnlyOrgIds.length, "orgs");
+        const memberOrgProjects = await db
           .select({
             id: projects.id,
             name: projects.name,
@@ -1387,11 +1407,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             updatedAt: projects.updatedAt,
           })
           .from(projects)
-          .where(inArray(projects.organizationId, memberOrgIds));
+          .where(inArray(projects.organizationId, memberOnlyOrgIds));
 
         // Filter projects based on team assignments
         const filteredProjects = await Promise.all(
-          allOrgProjects.map(async (project) => {
+          memberOrgProjects.map(async (project) => {
             // Check if project has any team assignments
             const projectTeamAssignments = await db
               .select({ teamId: projectTeams.teamId })
@@ -1411,14 +1431,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
         );
 
-        userProjects = filteredProjects.filter((project): project is NonNullable<typeof project> => project !== null);
+        const accessibleMemberProjects = filteredProjects.filter((project): project is ProjectResult => project !== null);
+        allAccessibleProjects.push(...accessibleMemberProjects);
       }
 
-      console.log("[GET /api/projects] Found", userProjects.length, "projects");
+      console.log("[GET /api/projects] Found", allAccessibleProjects.length, "projects");
 
       // Add team count for each project
       const projectsWithCounts = await Promise.all(
-        userProjects.map(async (project) => {
+        allAccessibleProjects.map(async (project: ProjectResult) => {
           const teamCount = await db
             .select({ count: sql<number>`count(*)::int` })
             .from(projectTeams)
@@ -2373,7 +2394,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      let userBoards;
+      // Define type for board results
+      type BoardResult = {
+        id: string;
+        name: string;
+        description: string | null;
+        projectId: string;
+        createdById: string;
+        createdAt: Date | null;
+        updatedAt: Date | null;
+        projectName: string;
+        organizationId: string;
+      };
 
       // Get org IDs where user is owner or admin
       const adminOrgIds = memberships
@@ -2387,9 +2419,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(teamMembers.userId, user.id));
       const userTeamIds = userTeamMemberships.map(tm => tm.teamId);
 
+      // Get org IDs where user is only a member (not admin/owner)
+      const memberOnlyOrgIds = memberships
+        .filter(m => m.role === OrganizationRole.MEMBER)
+        .map(m => m.organizationId);
+
+      // Collect all accessible boards
+      const allAccessibleBoards: BoardResult[] = [];
+
+      // 1. Get ALL boards from orgs where user is admin/owner (no team filtering)
       if (adminOrgIds.length > 0) {
-        // User is owner/admin in at least one org - get ALL boards from those orgs
-        userBoards = await db
+        const adminBoards = await db
           .select({
             id: boards.id,
             name: boards.name,
@@ -2404,11 +2444,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(boards)
           .innerJoin(projects, eq(projects.id, boards.projectId))
           .where(inArray(projects.organizationId, adminOrgIds));
-      } else {
-        // Regular member - get all boards from orgs where user is member
-        const memberOrgIds = memberships.map(m => m.organizationId);
         
-        const allOrgBoards = await db
+        allAccessibleBoards.push(...adminBoards);
+      }
+
+      // 2. Get boards from orgs where user is only a member (with team filtering)
+      if (memberOnlyOrgIds.length > 0) {
+        const memberOrgBoards = await db
           .select({
             id: boards.id,
             name: boards.name,
@@ -2422,11 +2464,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
           .from(boards)
           .innerJoin(projects, eq(projects.id, boards.projectId))
-          .where(inArray(projects.organizationId, memberOrgIds));
+          .where(inArray(projects.organizationId, memberOnlyOrgIds));
 
         // Filter boards based on team assignments
         const filteredBoards = await Promise.all(
-          allOrgBoards.map(async (board) => {
+          memberOrgBoards.map(async (board) => {
             // Check if board has any team assignments
             const boardTeamAssignments = await db
               .select({ teamId: boardTeams.teamId })
@@ -2446,12 +2488,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
         );
 
-        userBoards = filteredBoards.filter((board): board is NonNullable<typeof board> => board !== null);
+        const accessibleMemberBoards = filteredBoards.filter((board): board is BoardResult => board !== null);
+        allAccessibleBoards.push(...accessibleMemberBoards);
       }
 
       // Add team count for each board and format with project info
       const boardsWithCounts = await Promise.all(
-        userBoards.map(async (board) => {
+        allAccessibleBoards.map(async (board: BoardResult) => {
           const teamCount = await db
             .select({ count: sql<number>`count(*)::int` })
             .from(boardTeams)
