@@ -27,7 +27,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
   const { toast } = useToast();
 
   const { data: organizations = [] } = useQuery<Organization[]>({
-    queryKey: ["/api/organizations"],
+    queryKey: ["/api/my-organizations"],
   });
 
   const userOrg = organizations[0];

@@ -46,7 +46,7 @@ export default function Projects() {
 
   // Obtener la organización del usuario (siempre hay una)
   const { data: organizations = [], isLoading: orgsLoading } = useQuery<Organization[]>({
-    queryKey: ["/api/organizations"],
+    queryKey: ["/api/my-organizations"],
   });
 
   // Usar la primera (y única) organización del usuario
