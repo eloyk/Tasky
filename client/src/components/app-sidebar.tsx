@@ -35,15 +35,13 @@ const userMenuItems = [
   },
 ];
 
-const adminMenuItems = [
+// System admin menu items (requires organization-creators permission)
+const systemAdminMenuItems = [
   {
     title: "Centro de Control",
     url: "/admin",
     icon: Shield,
   },
-];
-
-const systemAdminMenuItems = [
   {
     title: "Organizaciones",
     url: "/organizations",
@@ -62,12 +60,7 @@ export function AppSidebar() {
     queryKey: ['/api/auth/can-create-organizations'],
   });
 
-  // Check if user is admin/owner in at least one organization
-  const isAdmin = currentUser?.organizations?.some(
-    (org: { role: string }) => org.role === 'admin' || org.role === 'owner'
-  ) || false;
-  
-  // Check if user has organization-creators permission
+  // Check if user has organization-creators permission (for Centro de Control and Organizaciones)
   const isSystemAdmin = canCreateOrgs?.canCreate === true;
 
   return (
@@ -105,30 +98,6 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
-        {isAdmin && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Administración</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {adminMenuItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={location === item.url}
-                      data-testid={`nav-${item.title.toLowerCase()}`}
-                    >
-                      <Link href={item.url}>
-                        <item.icon />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
 
         {isSystemAdmin && (
           <SidebarGroup>
