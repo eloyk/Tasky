@@ -73,10 +73,15 @@ interface KeycloakUser {
   enabled: boolean;
 }
 
-export default function TeamsPage() {
+interface TeamsPageProps {
+  organizationId?: string | null;
+  hideOrgSelector?: boolean;
+}
+
+export default function TeamsPage({ organizationId: propOrgId, hideOrgSelector = false }: TeamsPageProps = {}) {
   const { toast } = useToast();
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [internalOrgId, setInternalOrgId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -89,21 +94,28 @@ export default function TeamsPage() {
     queryKey: ['/api/auth/user'],
   });
 
-  // Set initial organization when user data loads
+  // Use prop org ID if provided, otherwise use internal state
+  const selectedOrgId = propOrgId ?? internalOrgId;
+  const setSelectedOrgId = propOrgId ? () => {} : setInternalOrgId;
+
+  // Set initial organization when user data loads (only if not using prop)
   useEffect(() => {
-    if (currentUser?.organizations && currentUser.organizations.length > 0 && !selectedOrgId) {
+    if (!propOrgId && currentUser?.organizations && currentUser.organizations.length > 0 && !internalOrgId) {
       // Default to first admin/owner org, or first org if none
       const adminOrg = currentUser.organizations.find(
         (org: UserOrganization) => org.role === 'owner' || org.role === 'admin'
       );
-      setSelectedOrgId(adminOrg?.organizationId || currentUser.organizations[0].organizationId);
+      setInternalOrgId(adminOrg?.organizationId || currentUser.organizations[0].organizationId);
     }
-  }, [currentUser?.organizations, selectedOrgId]);
+  }, [propOrgId, currentUser?.organizations, internalOrgId]);
 
   // Get organizations where user is admin/owner (can manage teams)
   const adminOrganizations: UserOrganization[] = currentUser?.organizations?.filter(
     (org: UserOrganization) => org.role === 'owner' || org.role === 'admin'
   ) || [];
+  
+  // Determine if org selector should be shown
+  const showOrgSelector = !hideOrgSelector && !propOrgId && adminOrganizations.length > 1;
 
   const { data: teams, isLoading: teamsLoading } = useQuery<Team[]>({
     queryKey: ['/api/organizations', selectedOrgId, 'teams'],
@@ -358,56 +370,45 @@ export default function TeamsPage() {
   )?.organizationName || 'Organización';
 
   return (
-    <div className="container max-w-6xl py-8 px-4">
-      <div className="space-y-6">
-        {/* Organization Selector - Only show if user has multiple orgs */}
-        {adminOrganizations.length > 1 && (
-          <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-            <Building2 className="h-5 w-5 text-muted-foreground" />
-            <span className="text-sm font-medium">Organización:</span>
-            <Select value={selectedOrgId || undefined} onValueChange={setSelectedOrgId}>
-              <SelectTrigger className="w-[280px]" data-testid="select-organization">
-                <SelectValue placeholder="Seleccionar organización" />
-              </SelectTrigger>
-              <SelectContent>
-                {adminOrganizations.map((org) => (
-                  <SelectItem key={org.organizationId} value={org.organizationId}>
-                    {org.organizationName} ({org.role === 'owner' ? 'Propietario' : 'Admin'})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+    <div className="space-y-6">
+      {/* Organization Selector - Only show if not controlled by parent and user has multiple orgs */}
+      {showOrgSelector && (
+        <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+          <Building2 className="h-5 w-5 text-muted-foreground" />
+          <span className="text-sm font-medium">Organización:</span>
+          <Select value={selectedOrgId || undefined} onValueChange={setInternalOrgId}>
+            <SelectTrigger className="w-[280px]" data-testid="select-organization-teams">
+              <SelectValue placeholder="Seleccionar organización" />
+            </SelectTrigger>
+            <SelectContent>
+              {adminOrganizations.map((org) => (
+                <SelectItem key={org.organizationId} value={org.organizationId}>
+                  {org.organizationName} ({org.role === 'owner' ? 'Propietario' : 'Admin'})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
-        {/* Show current org name if only one org */}
-        {adminOrganizations.length === 1 && (
-          <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-            <Building2 className="h-5 w-5 text-muted-foreground" />
-            <span className="text-sm">
-              <span className="font-medium">Organización:</span> {currentOrgName}
-            </span>
-          </div>
-        )}
+      {/* No admin access warning */}
+      {!hasAdminAccess && (
+        <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+          <p className="text-sm text-yellow-600 dark:text-yellow-400">
+            No tienes permisos de administrador en ninguna organización. 
+            Solo los administradores pueden gestionar equipos.
+          </p>
+        </div>
+      )}
 
-        {/* No admin access warning */}
-        {!hasAdminAccess && (
-          <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-            <p className="text-sm text-yellow-600 dark:text-yellow-400">
-              No tienes permisos de administrador en ninguna organización. 
-              Solo los administradores pueden gestionar equipos.
-            </p>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold" data-testid="heading-teams">Equipos</h1>
-            <p className="text-muted-foreground mt-2">
-              Organiza usuarios en equipos para asignarlos a tableros y proyectos
-            </p>
-          </div>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold" data-testid="heading-teams">Equipos</h1>
+          <p className="text-muted-foreground mt-2">
+            Organiza usuarios en equipos para asignarlos a tableros y proyectos
+          </p>
+        </div>
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-create-team" disabled={!hasAdminAccess}>
                 <Plus className="h-4 w-4 mr-2" />
