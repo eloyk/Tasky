@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,7 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Users, Edit, Trash2, UserPlus, X } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Plus, Users, Edit, Trash2, UserPlus, X, Building2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const teamFormSchema = z.object({
@@ -55,9 +56,17 @@ interface OrganizationMember {
   role: 'owner' | 'admin' | 'member';
 }
 
+// Tipo para las membresías de organización del usuario
+interface UserOrganization {
+  organizationId: string;
+  organizationName: string;
+  role: string;
+}
+
 export default function TeamsPage() {
   const { toast } = useToast();
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -68,9 +77,25 @@ export default function TeamsPage() {
     queryKey: ['/api/auth/user'],
   });
 
+  // Set initial organization when user data loads
+  useEffect(() => {
+    if (currentUser?.organizations && currentUser.organizations.length > 0 && !selectedOrgId) {
+      // Default to first admin/owner org, or first org if none
+      const adminOrg = currentUser.organizations.find(
+        (org: UserOrganization) => org.role === 'owner' || org.role === 'admin'
+      );
+      setSelectedOrgId(adminOrg?.organizationId || currentUser.organizations[0].organizationId);
+    }
+  }, [currentUser?.organizations, selectedOrgId]);
+
+  // Get organizations where user is admin/owner (can manage teams)
+  const adminOrganizations: UserOrganization[] = currentUser?.organizations?.filter(
+    (org: UserOrganization) => org.role === 'owner' || org.role === 'admin'
+  ) || [];
+
   const { data: teams, isLoading: teamsLoading } = useQuery<Team[]>({
-    queryKey: ['/api/organizations', currentUser?.organizationId, 'teams'],
-    enabled: !!currentUser?.organizationId,
+    queryKey: ['/api/organizations', selectedOrgId, 'teams'],
+    enabled: !!selectedOrgId,
   });
 
   const { data: teamMembers } = useQuery<TeamMember[]>({
@@ -79,8 +104,8 @@ export default function TeamsPage() {
   });
 
   const { data: orgMembers } = useQuery<OrganizationMember[]>({
-    queryKey: ['/api/organizations', currentUser?.organizationId, 'members'],
-    enabled: !!currentUser?.organizationId && isAddMemberOpen,
+    queryKey: ['/api/organizations', selectedOrgId, 'members'],
+    enabled: !!selectedOrgId && isAddMemberOpen,
   });
 
   const createForm = useForm<TeamFormValues>({
@@ -105,11 +130,11 @@ export default function TeamsPage() {
     mutationFn: async (data: TeamFormValues) => {
       return await apiRequest('POST', '/api/teams', {
         ...data,
-        organizationId: currentUser?.organizationId,
+        organizationId: selectedOrgId,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/organizations', currentUser?.organizationId, 'teams'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', selectedOrgId, 'teams'] });
       setIsCreateOpen(false);
       createForm.reset();
       toast({
@@ -131,7 +156,7 @@ export default function TeamsPage() {
       return await apiRequest('PUT', `/api/teams/${selectedTeam?.id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/organizations', currentUser?.organizationId, 'teams'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', selectedOrgId, 'teams'] });
       setIsEditOpen(false);
       setSelectedTeam(null);
       toast({
@@ -153,7 +178,7 @@ export default function TeamsPage() {
       return await apiRequest('DELETE', `/api/teams/${selectedTeam?.id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/organizations', currentUser?.organizationId, 'teams'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', selectedOrgId, 'teams'] });
       setIsDeleteOpen(false);
       setSelectedTeam(null);
       toast({
@@ -270,9 +295,57 @@ export default function TeamsPage() {
     );
   }
 
+  // Check if user has admin access to any organization
+  const hasAdminAccess = adminOrganizations.length > 0;
+  
+  // Get current organization name
+  const currentOrgName = currentUser?.organizations?.find(
+    (org: UserOrganization) => org.organizationId === selectedOrgId
+  )?.organizationName || 'Organización';
+
   return (
     <div className="container max-w-6xl py-8 px-4">
       <div className="space-y-6">
+        {/* Organization Selector - Only show if user has multiple orgs */}
+        {adminOrganizations.length > 1 && (
+          <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+            <Building2 className="h-5 w-5 text-muted-foreground" />
+            <span className="text-sm font-medium">Organización:</span>
+            <Select value={selectedOrgId || undefined} onValueChange={setSelectedOrgId}>
+              <SelectTrigger className="w-[280px]" data-testid="select-organization">
+                <SelectValue placeholder="Seleccionar organización" />
+              </SelectTrigger>
+              <SelectContent>
+                {adminOrganizations.map((org) => (
+                  <SelectItem key={org.organizationId} value={org.organizationId}>
+                    {org.organizationName} ({org.role === 'owner' ? 'Propietario' : 'Admin'})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Show current org name if only one org */}
+        {adminOrganizations.length === 1 && (
+          <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+            <Building2 className="h-5 w-5 text-muted-foreground" />
+            <span className="text-sm">
+              <span className="font-medium">Organización:</span> {currentOrgName}
+            </span>
+          </div>
+        )}
+
+        {/* No admin access warning */}
+        {!hasAdminAccess && (
+          <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+              No tienes permisos de administrador en ninguna organización. 
+              Solo los administradores pueden gestionar equipos.
+            </p>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold" data-testid="heading-teams">Equipos</h1>
@@ -282,7 +355,7 @@ export default function TeamsPage() {
           </div>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
-              <Button data-testid="button-create-team">
+              <Button data-testid="button-create-team" disabled={!hasAdminAccess}>
                 <Plus className="h-4 w-4 mr-2" />
                 Crear equipo
               </Button>

@@ -437,17 +437,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           console.log("[/api/auth/user] User created:", newUser.email);
           
-          // Get user's primary organization membership (first one)
-          const [membership] = await db
-            .select()
+          // Get ALL user's organization memberships for multi-org support (new user case)
+          const newUserMemberships = await db
+            .select({
+              organizationId: organizationMembers.organizationId,
+              role: organizationMembers.role,
+            })
             .from(organizationMembers)
-            .where(eq(organizationMembers.userId, newUser.id))
-            .limit(1);
+            .where(eq(organizationMembers.userId, newUser.id));
+          
+          // Get organization details for new user
+          const newUserOrgIds = newUserMemberships.map(m => m.organizationId);
+          let newUserOrgsWithDetails: Array<{
+            organizationId: string;
+            organizationName: string;
+            role: string;
+          }> = [];
+          
+          if (newUserOrgIds.length > 0) {
+            const newUserOrgs = await db
+              .select()
+              .from(organizations)
+              .where(inArray(organizations.id, newUserOrgIds));
+            
+            newUserOrgsWithDetails = newUserMemberships.map(m => {
+              const org = newUserOrgs.find(o => o.id === m.organizationId);
+              return {
+                organizationId: m.organizationId,
+                organizationName: org?.name || 'Unknown',
+                role: m.role,
+              };
+            });
+          }
+          
+          const newUserPrimaryMembership = newUserMemberships[0];
           
           return res.json({
             ...newUser,
-            organizationId: membership?.organizationId || null,
-            role: membership?.role || null,
+            organizationId: newUserPrimaryMembership?.organizationId || null,
+            role: newUserPrimaryMembership?.role || null,
+            organizations: newUserOrgsWithDetails,
           });
         } catch (createError) {
           console.error("[/api/auth/user] Failed to create user:", createError);
@@ -455,18 +484,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Get user's primary organization membership (first one)
-      const [membership] = await db
-        .select()
+      // Get ALL user's organization memberships for multi-org support
+      const memberships = await db
+        .select({
+          organizationId: organizationMembers.organizationId,
+          role: organizationMembers.role,
+        })
         .from(organizationMembers)
-        .where(eq(organizationMembers.userId, user.id))
-        .limit(1);
+        .where(eq(organizationMembers.userId, user.id));
       
-      console.log("[/api/auth/user] Returning user:", user.email, "org:", membership?.organizationId);
+      // Also get organization details for each membership
+      const orgIds = memberships.map(m => m.organizationId);
+      let organizationsWithDetails: Array<{
+        organizationId: string;
+        organizationName: string;
+        role: string;
+      }> = [];
+      
+      if (orgIds.length > 0) {
+        const orgs = await db
+          .select()
+          .from(organizations)
+          .where(inArray(organizations.id, orgIds));
+        
+        organizationsWithDetails = memberships.map(m => {
+          const org = orgs.find(o => o.id === m.organizationId);
+          return {
+            organizationId: m.organizationId,
+            organizationName: org?.name || 'Unknown',
+            role: m.role,
+          };
+        });
+      }
+      
+      // Primary organization for backward compatibility (first one)
+      const primaryMembership = memberships[0];
+      
+      console.log("[/api/auth/user] Returning user:", user.email, "orgs:", organizationsWithDetails.length);
       res.json({
         ...user,
-        organizationId: membership?.organizationId || null,
-        role: membership?.role || null,
+        organizationId: primaryMembership?.organizationId || null,
+        role: primaryMembership?.role || null,
+        organizations: organizationsWithDetails,
       });
     } catch (error) {
       console.error("[/api/auth/user] Error:", error);
