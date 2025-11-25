@@ -797,6 +797,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Organization routes
+  
+  // Get organizations where current user is a member (no special permissions required)
+  // This endpoint is used by the project selector to show organization names
+  app.get("/api/my-organizations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userEmail = req.user.claims.email;
+      const [user] = await db.select().from(users).where(eq(users.email, userEmail));
+      
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      // Get organizations where user is a member
+      const userOrgs = await db
+        .select({
+          id: organizations.id,
+          name: organizations.name,
+          description: organizations.description,
+          ownerId: organizations.ownerId,
+          createdAt: organizations.createdAt,
+          updatedAt: organizations.updatedAt,
+          role: organizationMembers.role,
+        })
+        .from(organizationMembers)
+        .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))
+        .where(eq(organizationMembers.userId, user.id));
+
+      res.json(userOrgs);
+    } catch (error) {
+      console.error("Error fetching user organizations:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // Admin endpoint for organization management (requires organization-creators permission)
   app.get("/api/organizations", isAuthenticated, async (req: any, res) => {
     try {
       const userEmail = req.user.claims.email;
