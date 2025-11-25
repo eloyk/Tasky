@@ -2956,16 +2956,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { teamId } = req.params;
       const { userId: keycloakUserId } = req.body; // userId from frontend is the Keycloak UUID
       const userEmail = req.user.claims.email;
+      
+      console.log("[POST /api/teams/:teamId/members] Starting - teamId:", teamId, "keycloakUserId:", keycloakUserId);
+      
       const [user] = await db.select().from(users).where(eq(users.email, userEmail));
       
       if (!user) {
+        console.log("[POST /api/teams/:teamId/members] Current user not found");
         return res.status(401).json({ message: "User not found" });
       }
 
       const team = await storage.getTeam(teamId);
       if (!team) {
+        console.log("[POST /api/teams/:teamId/members] Team not found:", teamId);
         return res.status(404).json({ message: "Team not found" });
       }
+      
+      console.log("[POST /api/teams/:teamId/members] Team found, organizationId:", team.organizationId);
 
       const [membership] = await db
         .select()
@@ -2976,20 +2983,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ));
 
       if (!membership || (membership.role !== OrganizationRole.ADMIN && membership.role !== OrganizationRole.OWNER)) {
+        console.log("[POST /api/teams/:teamId/members] User not admin - membership:", membership);
         return res.status(403).json({ message: "Only admins can add team members" });
       }
 
       // Get the user's info from Keycloak to find their email
+      console.log("[POST /api/teams/:teamId/members] Looking up Keycloak user:", keycloakUserId);
       const keycloakUser = await keycloakAdmin.getUserById(keycloakUserId);
+      console.log("[POST /api/teams/:teamId/members] Keycloak user result:", keycloakUser);
+      
       if (!keycloakUser || !keycloakUser.email) {
+        console.log("[POST /api/teams/:teamId/members] Keycloak user not found or no email");
         return res.status(404).json({ message: "User not found in Keycloak" });
       }
 
       // Find the local user by email
+      console.log("[POST /api/teams/:teamId/members] Looking up local user by email:", keycloakUser.email);
       const [targetUser] = await db.select().from(users).where(eq(users.email, keycloakUser.email));
       if (!targetUser) {
+        console.log("[POST /api/teams/:teamId/members] Local user not found for email:", keycloakUser.email);
         return res.status(404).json({ message: "User not found in local database" });
       }
+      
+      console.log("[POST /api/teams/:teamId/members] Found local user:", targetUser.id);
 
       // Verify target user is a member of the same organization as the team
       const [targetMembership] = await db
@@ -3001,13 +3017,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ));
 
       if (!targetMembership) {
+        console.log("[POST /api/teams/:teamId/members] Target user not member of organization");
         return res.status(400).json({ message: "User is not a member of this organization" });
       }
 
+      console.log("[POST /api/teams/:teamId/members] Adding team member - teamId:", teamId, "userId:", targetUser.id);
       const member = await storage.addTeamMember({ teamId, userId: targetUser.id });
+      console.log("[POST /api/teams/:teamId/members] Success! Member added:", member);
       res.status(201).json(member);
     } catch (error) {
-      console.error("Error adding team member:", error);
+      console.error("[POST /api/teams/:teamId/members] Error adding team member:", error);
       res.status(500).json({ message: "Failed to add team member" });
     }
   });
