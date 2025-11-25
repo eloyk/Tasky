@@ -63,6 +63,16 @@ interface UserOrganization {
   role: string;
 }
 
+// Tipo para usuarios de Keycloak
+interface KeycloakUser {
+  id: string;
+  username: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  enabled: boolean;
+}
+
 export default function TeamsPage() {
   const { toast } = useToast();
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
@@ -72,6 +82,8 @@ export default function TeamsPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+  const [isAddOrgMemberOpen, setIsAddOrgMemberOpen] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<'admin' | 'member'>('member');
 
   const { data: currentUser } = useQuery<any>({
     queryKey: ['/api/auth/user'],
@@ -105,8 +117,19 @@ export default function TeamsPage() {
 
   const { data: orgMembers } = useQuery<OrganizationMember[]>({
     queryKey: ['/api/organizations', selectedOrgId, 'members'],
-    enabled: !!selectedOrgId && isAddMemberOpen,
+    enabled: !!selectedOrgId && (isAddMemberOpen || isAddOrgMemberOpen),
   });
+
+  // Get all Keycloak users for adding to organization
+  const { data: keycloakUsers } = useQuery<KeycloakUser[]>({
+    queryKey: ['/api/keycloak/users'],
+    enabled: isAddOrgMemberOpen,
+  });
+
+  // Filter out users who are already members of the selected organization
+  const availableKeycloakUsers = keycloakUsers?.filter(
+    (kcUser) => !orgMembers?.some((member) => member.userId === kcUser.id)
+  ) || [];
 
   const createForm = useForm<TeamFormValues>({
     resolver: zodResolver(teamFormSchema),
@@ -234,6 +257,37 @@ export default function TeamsPage() {
       });
     },
   });
+
+  // Add member to organization (from Keycloak users)
+  const addOrgMemberMutation = useMutation({
+    mutationFn: async ({ keycloakUserId, role }: { keycloakUserId: string; role: string }) => {
+      return await apiRequest('POST', `/api/organizations/${selectedOrgId}/members`, {
+        keycloakUserId,
+        role,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', selectedOrgId, 'members'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/keycloak/users'] });
+      setIsAddOrgMemberOpen(false);
+      setSelectedRole('member');
+      toast({
+        title: "Miembro agregado a la organización",
+        description: "El usuario ha sido agregado exitosamente a la organización.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo agregar el usuario a la organización",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAddOrgMember = (keycloakUserId: string) => {
+    addOrgMemberMutation.mutate({ keycloakUserId, role: selectedRole });
+  };
 
   const handleOpenEdit = (team: Team) => {
     setSelectedTeam(team);
@@ -681,40 +735,126 @@ export default function TeamsPage() {
         <Dialog open={isAddMemberOpen} onOpenChange={setIsAddMemberOpen}>
           <DialogContent data-testid="dialog-add-member">
             <DialogHeader>
-              <DialogTitle>Agregar miembro</DialogTitle>
+              <DialogTitle>Agregar miembro al equipo</DialogTitle>
               <DialogDescription>
                 Selecciona un usuario de la organización para agregar al equipo
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {availableMembers.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No hay usuarios disponibles para agregar
-                </div>
-              ) : (
-                availableMembers.map((orgMember) => (
-                  <button
-                    key={orgMember.userId}
-                    onClick={() => handleAddMember(orgMember.userId)}
-                    className="w-full flex items-center gap-3 p-3 rounded-md border hover-elevate text-left"
-                    data-testid={`button-select-member-${orgMember.userId}`}
-                  >
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs">
-                        {getUserInitials(orgMember)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium">
-                        {getUserDisplayName(orgMember)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {orgMember.email}
-                      </p>
-                    </div>
-                  </button>
-                ))
-              )}
+            <div className="space-y-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsAddMemberOpen(false);
+                  setIsAddOrgMemberOpen(true);
+                }}
+                className="w-full"
+                data-testid="button-add-org-member-from-team"
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Agregar usuario de Keycloak a la organización
+              </Button>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {availableMembers.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No hay usuarios disponibles para agregar. Primero agrega usuarios a la organización.
+                  </div>
+                ) : (
+                  availableMembers.map((orgMember) => (
+                    <button
+                      key={orgMember.userId}
+                      onClick={() => handleAddMember(orgMember.userId)}
+                      className="w-full flex items-center gap-3 p-3 rounded-md border hover-elevate text-left"
+                      data-testid={`button-select-member-${orgMember.userId}`}
+                    >
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="text-xs">
+                          {getUserInitials(orgMember)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium">
+                          {getUserDisplayName(orgMember)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {orgMember.email}
+                        </p>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isAddOrgMemberOpen} onOpenChange={setIsAddOrgMemberOpen}>
+          <DialogContent className="max-w-2xl" data-testid="dialog-add-org-member">
+            <DialogHeader>
+              <DialogTitle>Agregar usuario a la organización</DialogTitle>
+              <DialogDescription>
+                Selecciona un usuario de Keycloak para agregarlo a la organización actual
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium">Rol:</label>
+                <Select
+                  value={selectedRole}
+                  onValueChange={(value: 'admin' | 'member') => setSelectedRole(value)}
+                >
+                  <SelectTrigger className="w-40" data-testid="select-org-member-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="member">Miembro</SelectItem>
+                    <SelectItem value="admin">Administrador</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {availableKeycloakUsers.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {keycloakUsers ? 
+                      "Todos los usuarios de Keycloak ya son miembros de esta organización" :
+                      "Cargando usuarios..."
+                    }
+                  </div>
+                ) : (
+                  availableKeycloakUsers.map((kcUser) => (
+                    <button
+                      key={kcUser.id}
+                      onClick={() => handleAddOrgMember(kcUser.id)}
+                      disabled={addOrgMemberMutation.isPending}
+                      className="w-full flex items-center gap-3 p-3 rounded-md border hover-elevate text-left disabled:opacity-50"
+                      data-testid={`button-select-keycloak-user-${kcUser.id}`}
+                    >
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="text-xs">
+                          {kcUser.firstName && kcUser.lastName 
+                            ? `${kcUser.firstName[0]}${kcUser.lastName[0]}`.toUpperCase()
+                            : kcUser.email?.[0]?.toUpperCase() || '?'
+                          }
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">
+                          {kcUser.firstName && kcUser.lastName 
+                            ? `${kcUser.firstName} ${kcUser.lastName}`
+                            : kcUser.username || kcUser.email
+                          }
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {kcUser.email}
+                        </p>
+                      </div>
+                      {!kcUser.enabled && (
+                        <Badge variant="secondary" className="text-xs">Deshabilitado</Badge>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
           </DialogContent>
         </Dialog>
