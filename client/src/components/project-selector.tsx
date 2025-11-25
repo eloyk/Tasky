@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, FolderKanban, Plus, Settings, Building2 } from "lucide-react";
+import { ChevronDown, FolderKanban, Building2 } from "lucide-react";
 import { useSelectedProject } from "@/contexts/SelectedProjectContext";
 import type { Project, Organization } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,10 @@ import {
   DropdownMenuTrigger,
   DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu";
-import { CreateProjectDialog, EditProjectDialog } from "./project-dialogs";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function ProjectSelector() {
   const { selectedProject, setSelectedProject, isLoading } = useSelectedProject();
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ['/api/projects'],
@@ -84,7 +81,7 @@ export function ProjectSelector() {
           <DropdownMenuSeparator />
           {projects.length === 0 ? (
             <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-              No hay proyectos. Crea uno nuevo.
+              No hay proyectos. Usa el Centro de Control para crear uno.
             </div>
           ) : (
             projectsByOrg.map(([orgId, { org, projects: orgProjects }]) => (
@@ -108,34 +105,8 @@ export function ProjectSelector() {
               </DropdownMenuGroup>
             ))
           )}
-          <DropdownMenuItem
-            onClick={() => setEditDialogOpen(true)}
-            disabled={!selectedProject}
-            data-testid="menu-item-configure-project"
-          >
-            <Settings className="mr-2 h-4 w-4" />
-            Configurar Proyecto
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setCreateDialogOpen(true)}
-            data-testid="menu-item-new-project"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Nuevo Proyecto
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <CreateProjectDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
-
-      <EditProjectDialog
-        project={selectedProject}
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-      />
     </>
   );
 }

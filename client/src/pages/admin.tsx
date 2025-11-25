@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Shield, AlertCircle, Users, Plus, X, Briefcase, LayoutGrid, Building2, ChevronRight, FolderOpen } from "lucide-react";
+import { Shield, AlertCircle, Users, Plus, X, Briefcase, LayoutGrid, Building2, ChevronRight, FolderOpen, Settings } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -17,6 +17,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import TeamsPage from "./teams";
+import { CreateProjectDialog, EditProjectDialog } from "@/components/project-dialogs";
+import type { Project as ProjectType } from "@shared/schema";
 
 interface Project {
   id: string;
@@ -128,6 +130,10 @@ export default function Admin() {
   const [addBoardTeamOpen, setAddBoardTeamOpen] = useState(false);
   const [selectedBoardTeamId, setSelectedBoardTeamId] = useState<string>("");
   const [selectedBoardPermission, setSelectedBoardPermission] = useState<string>("view");
+
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [editProjectOpen, setEditProjectOpen] = useState(false);
+  const [projectToEdit, setProjectToEdit] = useState<ProjectType | null>(null);
 
   const { data: currentUser, isLoading } = useQuery<any>({
     queryKey: ['/api/auth/user'],
@@ -407,22 +413,38 @@ export default function Admin() {
 
         <TabsContent value="projects" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Briefcase className="h-5 w-5" />
-                Proyectos de {currentOrgName}
-              </CardTitle>
-              <CardDescription>
-                Gestiona qué equipos tienen acceso a cada proyecto. Solo se muestran equipos de esta organización.
-              </CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Briefcase className="h-5 w-5" />
+                  Proyectos de {currentOrgName}
+                </CardTitle>
+                <CardDescription>
+                  Gestiona proyectos y qué equipos tienen acceso a cada uno.
+                </CardDescription>
+              </div>
+              <Button
+                onClick={() => setCreateProjectOpen(true)}
+                data-testid="button-new-project"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Nuevo Proyecto
+              </Button>
             </CardHeader>
             <CardContent>
               {projects.length === 0 ? (
                 <div className="text-center py-12">
                   <FolderOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">
+                  <p className="text-muted-foreground mb-4">
                     No hay proyectos en esta organización.
                   </p>
+                  <Button
+                    onClick={() => setCreateProjectOpen(true)}
+                    data-testid="button-create-first-project"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Crear primer proyecto
+                  </Button>
                 </div>
               ) : (
                 <Table>
@@ -455,17 +477,38 @@ export default function Admin() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedProject(project);
-                              setProjectPermissionsOpen(true);
-                            }}
-                            data-testid={`button-manage-project-${project.id}`}
-                          >
-                            Gestionar equipos
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setProjectToEdit({
+                                  id: project.id,
+                                  name: project.name,
+                                  description: project.description,
+                                  organizationId: project.organizationId,
+                                  createdById: "",
+                                  createdAt: null,
+                                  updatedAt: null,
+                                } as ProjectType);
+                                setEditProjectOpen(true);
+                              }}
+                              data-testid={`button-edit-project-${project.id}`}
+                            >
+                              <Settings className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedProject(project);
+                                setProjectPermissionsOpen(true);
+                              }}
+                              data-testid={`button-manage-project-${project.id}`}
+                            >
+                              Gestionar equipos
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1036,6 +1079,19 @@ export default function Admin() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Project dialogs */}
+      <CreateProjectDialog
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        organizationId={selectedOrgId}
+      />
+
+      <EditProjectDialog
+        project={projectToEdit}
+        open={editProjectOpen}
+        onOpenChange={setEditProjectOpen}
+      />
     </div>
   );
 }

@@ -20,9 +20,10 @@ import { Textarea } from "@/components/ui/textarea";
 interface CreateProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  organizationId?: string | null;
 }
 
-export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogProps) {
+export function CreateProjectDialog({ open, onOpenChange, organizationId }: CreateProjectDialogProps) {
   const [formData, setFormData] = useState({ name: "", description: "" });
   const { toast } = useToast();
 
@@ -31,6 +32,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
   });
 
   const userOrg = organizations[0];
+  const targetOrgId = organizationId || userOrg?.id;
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertProject) => {
@@ -55,7 +57,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
   });
 
   const handleCreate = () => {
-    if (!userOrg) {
+    if (!targetOrgId) {
       toast({
         title: "Error",
         description: "No se encontró una organización.",
@@ -76,7 +78,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
     createMutation.mutate({
       name: formData.name,
       description: formData.description || undefined,
-      organizationId: userOrg.id,
+      organizationId: targetOrgId,
     });
   };
 
