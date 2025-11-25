@@ -62,8 +62,13 @@ export function AppSidebar() {
     queryKey: ['/api/auth/can-create-organizations'],
   });
 
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'owner';
-  const isSystemAdmin = canCreateOrgs?.canCreate || false;
+  // Check if user is admin/owner in at least one organization
+  const isAdmin = currentUser?.organizations?.some(
+    (org: { role: string }) => org.role === 'admin' || org.role === 'owner'
+  ) || false;
+  
+  // Check if user has organization-creators permission
+  const isSystemAdmin = canCreateOrgs?.canCreate === true;
 
   return (
     <Sidebar>
