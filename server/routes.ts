@@ -2569,21 +2569,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Check if user is a member of the project
-      const [membership] = await db
-        .select()
-        .from(projectMembers)
-        .where(and(
-          eq(projectMembers.projectId, id),
-          eq(projectMembers.userId, user.id)
-        ));
-
-      if (!membership) {
-        return res.status(403).json({ message: "You are not a member of this project" });
+      // Get project to check organization
+      const [project] = await db.select().from(projects).where(eq(projects.id, id));
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
       }
 
+      // Check if user is a member of the organization
+      const [orgMembership] = await db
+        .select()
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.organizationId, project.organizationId),
+          eq(organizationMembers.userId, user.id)
+        ));
+
+      if (!orgMembership) {
+        return res.status(403).json({ message: "You are not a member of this organization" });
+      }
+
+      // Get all boards for this project
       const projectBoards = await storage.getBoardsByProject(id);
-      res.json(projectBoards);
+
+      // If user is owner/admin of org, return all boards without filtering
+      if (orgMembership.role === OrganizationRole.OWNER || orgMembership.role === OrganizationRole.ADMIN) {
+        return res.json(projectBoards);
+      }
+
+      // For regular members, filter boards based on team assignments
+      // Get user's team memberships (only teams from this organization for security)
+      const userTeamMemberships = await db
+        .select({ teamId: teamMembers.teamId })
+        .from(teamMembers)
+        .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+        .where(and(
+          eq(teamMembers.userId, user.id),
+          eq(teams.organizationId, project.organizationId)
+        ));
+      const userTeamIds = userTeamMemberships.map(tm => tm.teamId);
+
+      // Filter boards based on team assignments
+      const filteredBoards = await Promise.all(
+        projectBoards.map(async (board) => {
+          // Check if board has any team assignments
+          const boardTeamAssignments = await db
+            .select({ teamId: boardTeams.teamId })
+            .from(boardTeams)
+            .innerJoin(teams, eq(teams.id, boardTeams.teamId))
+            .where(and(
+              eq(boardTeams.boardId, board.id),
+              eq(teams.organizationId, project.organizationId) // Only consider teams from same org
+            ));
+
+          // If no teams assigned (or no valid teams from this org), all org members have access
+          if (boardTeamAssignments.length === 0) {
+            return board;
+          }
+
+          // If teams are assigned, check if user is member of any assigned team
+          const assignedTeamIds = boardTeamAssignments.map(bt => bt.teamId);
+          const hasAccess = userTeamIds.some(teamId => assignedTeamIds.includes(teamId));
+          
+          return hasAccess ? board : null;
+        })
+      );
+
+      const accessibleBoards = filteredBoards.filter(board => board !== null);
+      res.json(accessibleBoards);
     } catch (error) {
       console.error("Error fetching boards:", error);
       res.status(500).json({ message: "Failed to fetch boards" });
