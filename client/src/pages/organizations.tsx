@@ -114,7 +114,11 @@ export default function Organizations() {
       return await apiRequest("DELETE", `/api/organizations/${id}`, {});
     },
     onSuccess: () => {
+      // Invalidate all related caches to ensure orphan data is removed from UI
       queryClient.invalidateQueries({ queryKey: ["/api/organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/boards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
       setDeleteDialogOpen(false);
       setSelectedOrg(null);
       toast({
