@@ -364,7 +364,7 @@ Desarrollar una aplicación web de gestión de tareas colaborativa que permita a
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Usuario   │────▶│   Frontend  │────▶│   Backend   │
 │  (Acción)   │     │   (React)   │     │  (Express)  │
-└─────────────┘     └──────┬──────┘     └──────┬──────┘
+└─────────────┘     └──────┬──────┘     └───────┬─────┘
                            │                    │
                            │                    ▼
                            │            ┌─────────────┐
@@ -389,7 +389,7 @@ Desarrollar una aplicación web de gestión de tareas colaborativa que permita a
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │  Solicitud  │────▶│ Middleware  │────▶│  Verificar  │
 │   (Request) │     │   (Auth)    │     │    Rol      │
-└─────────────┘     └─────────────┘     └──────┬──────┘
+└─────────────┘     └─────────────┘     └───────┬─────┘
                                                 │
                     ┌─────────────┐             │
                     │   Acceso    │◀────────────┘
