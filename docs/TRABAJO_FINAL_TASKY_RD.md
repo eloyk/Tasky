@@ -11,17 +11,18 @@
 
 ### 1. Portada e Índice
 
-**UNIVERSIDAD / INSTITUCIÓN EDUCATIVA**
+**Unicaribe**
 
-**Trabajo Final de Desarrollo de Software**
+**Trabajo Final de Diseño y Cconstrucción de Interfaces**
 
 **Proyecto:** TASKY RD - Sistema de Gestión de Tareas Colaborativo
 
-**Asignatura:** [Nombre de la Asignatura]
+**Asignatura:** Diseño y Cconstrucción de Interfaces
 
-**Estudiante(s):** [Nombre del Estudiante]
+**Estudiantes:**
+- [Nombre del Estudiante]
 
-**Docente:** [Nombre del Docente]
+**Docente:** PELAGIO SORIANO
 
 **Fecha:** Noviembre 2025
 
