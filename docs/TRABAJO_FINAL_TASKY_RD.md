@@ -813,12 +813,12 @@ export const db = drizzle(sql);
 **Modelo de datos (Entidades principales):**
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  organizations  │────<│    projects     │────<│     boards      │
-│  - id           │     │  - id           │     │  - id           │
-│  - name         │     │  - name         │     │  - name         │
-│  - ownerId      │     │  - organizationId│    │  - projectId    │
-└─────────────────┘     └─────────────────┘     └────────┬────────┘
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  organizations  │────<│    projects      │────<│     boards      │
+│  - id           │     │  - id            │     │  - id           │
+│  - name         │     │  - name          │     │  - name         │
+│  - ownerId      │     │  - organizationId│     │  - projectId    │
+└─────────────────┘     └──────────────────┘     └────────┬────────┘
         │                                                 │
         │                                                 │
         ▼                                                 ▼
@@ -996,43 +996,43 @@ Tasky RD es una aplicación web de gestión de tareas colaborativa que permite:
 ### 3. Explicación del Flujo de Navegación entre Interfaces
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────────┐
 │                         LANDING PAGE                                 │
 │                    (Usuario no autenticado)                          │
 │                              │                                       │
 │                     [Iniciar Sesión]                                 │
 │                              │                                       │
 │                              ▼                                       │
-│                    ┌─────────────────┐                              │
-│                    │    KEYCLOAK     │                              │
-│                    │  (Login/Auth)   │                              │
-│                    └────────┬────────┘                              │
+│                    ┌─────────────────┐                               │
+│                    │    KEYCLOAK     │                               │
+│                    │  (Login/Auth)   │                               │
+│                    └─────────┬───────┘                               │
 │                              │                                       │
 │                              ▼                                       │
-├─────────────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────────────┤
 │                           SIDEBAR                                    │
-│  ┌─────────────┐  ┌──────────────────────────────────────────────┐ │
-│  │ Navegación  │  │              ÁREA DE CONTENIDO               │ │
-│  │             │  │                                              │ │
-│  │ • Inicio    │──│─▶ Dashboard con resumen                     │ │
-│  │             │  │                                              │ │
-│  │ • Tableros  │──│─▶ Lista de tableros → Vista Kanban          │ │
-│  │             │  │                        │                     │ │
-│  │             │  │                        ▼                     │ │
-│  │             │  │                   Detalle Tarea              │ │
-│  │             │  │                                              │ │
-│  │ • Config    │──│─▶ Perfil de usuario                         │ │
-│  │             │  │                                              │ │
-│  │ [Admin]     │  │                                              │ │
-│  │ • Centro    │──│─▶ Gestión: Proyectos, Tableros, Miembros    │ │
-│  │   Control   │  │                                              │ │
-│  │             │  │                                              │ │
-│  │ • Equipos   │──│─▶ Gestión de equipos                        │ │
-│  │             │  │                                              │ │
-│  │ • Orgs      │──│─▶ Gestión de organizaciones (si autorizado) │ │
-│  │             │  │                                              │ │
-│  └─────────────┘  └──────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
+│  ┌─────────────┐  ┌──────────────────────────────────────────────┐   │
+│  │ Navegación  │  │              ÁREA DE CONTENIDO               │   │
+│  │             │  │                                              │   │
+│  │ • Inicio    │──│─▶ Dashboard con resumen                      │   │
+│  │             │  │                                              │   │
+│  │ • Tableros  │──│─▶ Lista de tableros → Vista Kanban           │   │
+│  │             │  │                        │                     │   │
+│  │             │  │                        ▼                     │   │
+│  │             │  │                   Detalle Tarea              │   │
+│  │             │  │                                              │   │
+│  │ • Config    │──│─▶ Perfil de usuario                          │   │
+│  │             │  │                                              │   │
+│  │ [Admin]     │  │                                              │   │
+│  │ • Centro    │──│─▶ Gestión: Proyectos, Tableros, Miembros     │   │
+│  │   Control   │  │                                              │   │
+│  │             │  │                                              │   │
+│  │ • Equipos   │──│─▶ Gestión de equipos                         │   │
+│  │             │  │                                              │   │
+│  │ • Orgs      │──│─▶ Gestión de organizaciones (si autorizado)  │   │
+│  │             │  │                                              │   │
+│  └─────────────┘  └──────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
