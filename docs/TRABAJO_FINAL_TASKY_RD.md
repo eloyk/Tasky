@@ -309,7 +309,6 @@ Desarrollar una aplicación web de gestión de tareas colaborativa que permita a
 #### Estrategias de Soportabilidad
 
 1. **Documentación Técnica**:
-   - Archivo `replit.md` con arquitectura del sistema
    - Comentarios en código para lógica compleja
    - Esquema de base de datos documentado
 
@@ -983,7 +982,6 @@ Tasky RD es una aplicación web de gestión de tareas colaborativa que permite:
 
 | Herramienta | Versión | Propósito |
 |-------------|---------|-----------|
-| **Replit** | - | Plataforma de desarrollo en la nube |
 | **Node.js** | 20.x | Entorno de ejecución |
 | **TypeScript** | 5.x | Lenguaje de programación |
 | **React** | 18.x | Framework frontend |
